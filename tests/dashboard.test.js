@@ -292,3 +292,27 @@ test('editing an event changes every date, one date, or one date and later', asy
   const single = eventFromFields({ title: 'Dentist', date: '2026-12-01' }, 'dentist');
   assert.deepEqual(editEvent([single], single, '2026-12-01', 'one', { ...single, id: 'x', title: 'Dentist (moved)' }).map(event => [event.id, event.title]), [['dentist', 'Dentist (moved)']]);
 });
+
+test('personal savings add deposits, withdrawals and the Personal share of income, per person', async () => {
+  const { personalSavings, savingsFromFields } = await import('../src/personal-savings.js');
+  const state = freshData();
+  const deposit = savingsFromFields({ personId: 'long', date: '2026-11-10', time: '09:00', amount: '250', direction: 'in', note: ' Bonus ' }, undefined, '2026-11-10T14:00:00Z');
+  const withdrawal = savingsFromFields({ personId: 'long', date: '2026-11-12', time: '10:00', amount: '40.50', direction: 'out', note: '' });
+  assert.equal(deposit.note, 'Bonus');
+  assert.equal(withdrawal.amount, -4050);
+  assert.throws(() => savingsFromFields({ personId: 'long', date: '2026-11-12', time: '10:00', amount: '0' }));
+  const income = entryFromFields(fields({ type: 'income', personId: 'long', amount: '100', date: '2026-11-15', splits: JSON.stringify([{ categoryId: 'dining', rate: 2500 }]) }), state);
+  state.entries = [income];
+  state.savings = [deposit, withdrawal, savingsFromFields({ personId: 'mei', date: '2026-11-11', time: '08:00', amount: '5', direction: 'in' })];
+  const long = personalSavings(state, 'long');
+  assert.deepEqual([long.added, long.fromIncome, long.takenOut, long.balance], [25_000, 7_500, 4_050, 28_450]);
+  assert.deepEqual(long.rows.map(row => row.kind), ['income', 'out', 'in']);
+  assert.equal(personalSavings(state, 'mei').balance, 500);
+  // Savings don't touch joint savings, and bad records are dropped when read back.
+  assert.equal(summarize(state).jointBalance, 0);
+  const read = readState({ getItem: () => JSON.stringify({ ...state, savings: [...state.savings, { id: 'x', personId: 'long', amount: 'lots' }] }) });
+  assert.equal(read.savings.length, 3);
+  assert.deepEqual(readState({ getItem: () => JSON.stringify({ ...freshData(), savings: undefined }) }).savings, []);
+  const items = calendarItems(state, ['2026-11-12']).get('2026-11-12');
+  assert.deepEqual(items.map(item => [item.kind, item.title, item.amount]), [['saving', 'Taken from Long’s savings', -4050]]);
+});

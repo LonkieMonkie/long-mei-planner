@@ -1,4 +1,4 @@
-import { ArrowDownLeft, ArrowUpRight, CalendarDays, ChevronLeft, ChevronRight, Clock3, Pencil, PiggyBank, Plus, ReceiptText, Repeat, Trash2 } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, CalendarDays, ChevronLeft, ChevronRight, Clock3, Pencil, PiggyBank, Plus, ReceiptText, Repeat, Trash2, Wallet } from 'lucide-react';
 import { PEOPLE, calendarDays, calendarItems, dateFromKey, displayTime, localDate, money, shiftMonth, shortDate } from './model.js';
 import { Empty, PanelHeading } from './ui.jsx';
 import { repeatSummary } from './events.js';
@@ -7,6 +7,7 @@ const styles = {
   income: { tone: 'mint', label: 'Income', Icon: ArrowDownLeft },
   expense: { tone: 'rose', label: 'Expense', Icon: ArrowUpRight },
   deposit: { tone: 'mint', label: 'Deposit', Icon: PiggyBank },
+  saving: { tone: 'indigo', label: 'Personal savings', Icon: Wallet },
   payment: { tone: 'blue', label: 'Debt payment', Icon: ReceiptText },
   event: { tone: 'blue', label: 'Event', Icon: CalendarDays },
 };
@@ -21,6 +22,8 @@ function AgendaDetails({ item, label }) {
   let details;
   if (item.kind === 'deposit') {
     details = [person(entry.personId), '+' + money(item.amount), item.goal].filter(Boolean).join(' · ');
+  } else if (item.kind === 'saving') {
+    details = [(item.amount < 0 ? '−' : '+') + money(Math.abs(item.amount)), item.record.note].filter(Boolean).join(' · ');
   } else if (debt) {
     details = `${person(debt.debtorId)} paid ${person(debt.creditorId)} · ${money(debt.amount)}`;
   } else if (entry) {

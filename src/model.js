@@ -1,6 +1,7 @@
 import { DEFAULT_ACCENT, LEGACY_ACCENT, parseAccent } from './appearance.js';
 import { DEFAULT_TREE, normalizeTree } from './tree-model.js';
 import { normalizeEvent, occursOn } from './events.js';
+import { isSavingsRecord } from './personal-savings.js';
 
 export const STORAGE_KEY = 'our-little-life.dashboard.v2';
 export const PEOPLE = [
@@ -87,7 +88,7 @@ export function freshData() {
       { ...personalCategory },
     ],
     goals: [{ ...weddingGoal }],
-    entries: [], events: [], debts: [],
+    entries: [], events: [], debts: [], savings: [],
     savingsAdjustment: 0, accentColor: DEFAULT_ACCENT, theme: 'garden', tree: { ...DEFAULT_TREE },
   };
 }
@@ -218,6 +219,11 @@ export function calendarItems(state, dates) {
         entry, time, amount: deposited, goal: goalNames });
     }
   }
+  for (const record of state.savings ?? []) {
+    const name = PEOPLE.find(person => person.id === record.personId)?.name;
+    byDate.get(record.date)?.push({ id: 'saving:' + record.id, kind: 'saving', title: record.amount < 0 ? `Taken from ${name}’s savings` : `Added to ${name}’s savings`,
+      record, time: record.time, amount: record.amount });
+  }
   for (const debt of state.debts) {
     if (!debt.settledAt) continue;
     const paidAt = new Date(debt.settledAt);
@@ -286,6 +292,8 @@ export function readState(storage) {
   }
   delete state.googleUrl;
   state.debts ??= [];
+  if (state.savings !== undefined && !Array.isArray(state.savings)) throw new Error('The saved dashboard could not be read.');
+  state.savings = (state.savings ?? []).filter(isSavingsRecord);
   const category = state.categories.find(item => item.id === WEDDING_CATEGORY_ID)
     ?? state.categories.find(item => isWeddingName(item.name));
   const wedding = {
