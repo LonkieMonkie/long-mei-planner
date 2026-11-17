@@ -26,7 +26,7 @@ Open the localhost URL shown in the terminal. Edit files in `src`. The productio
 - Editing the joint balance records the difference between the stated balance and the contributions already logged. Later entry changes still adjust that balance by the exact difference. The manual adjustment belongs to the overall balance.
 - The calendar combines budget entries, deposits, debt payments and events. An event can repeat every day, week, two weeks, month or year, and end on a date or after a number of times. Monthly and yearly repeats on the 29th to 31st fall on the last day of shorter months. Deleting a repeating event removes one date, that date and later ones, or every date.
 - The debt ledger offsets open balances in both directions. Settling a debt records its payment timestamp and keeps it in the history.
-- Export Excel includes entries, category settings, goal totals, local events and debt history.
+- Export Excel, under Settings, includes entries, category settings, goal totals, events and debt history.
 
 ## Local data
 

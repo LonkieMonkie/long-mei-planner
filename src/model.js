@@ -3,7 +3,6 @@ import { DEFAULT_TREE, normalizeTree } from './tree-model.js';
 import { normalizeEvent, occursOn } from './events.js';
 
 export const STORAGE_KEY = 'our-little-life.dashboard.v2';
-export const LEGACY_KEY = 'our-little-life.v1';
 export const PEOPLE = [
   { id: 'long', name: 'Long', initials: 'L', tone: 'indigo' },
   { id: 'mei', name: 'Mei', initials: 'M', tone: 'rose' },

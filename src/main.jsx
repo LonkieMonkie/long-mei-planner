@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { CalendarDays, ChevronLeft, ChevronRight, CircleAlert, CircleCheck, Download, LayoutGrid, PiggyBank, Plus, Scale, Settings as SettingsIcon, Sprout, Wallet } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, CircleAlert, CircleCheck, LayoutGrid, PiggyBank, Plus, Scale, Settings as SettingsIcon, Sprout, Wallet } from 'lucide-react';
 import { Budget, Dashboard, MonthSelector, Savings } from './finance.jsx';
 import { CalendarView } from './calendar.jsx';
 import { DebtTracker } from './debts.jsx';
 import { Dialogs } from './dialogs.jsx';
-import { Settings, TreeSettings } from './settings.jsx';
+import { ExportCard, Settings, TreeSettings } from './settings.jsx';
 import { accentStyles } from './appearance.js';
 import { PlantPair } from './plants.jsx';
-import { LEGACY_KEY, PEOPLE, STORAGE_KEY, categoryColor, entryContribution, entryTime, freshData, localDate, readState, summarize } from './model.js';
+import { PEOPLE, STORAGE_KEY, categoryColor, entryContribution, entryTime, freshData, localDate, readState, summarize } from './model.js';
 import { workbook } from './excel.js';
 import { repeatSummary } from './events.js';
 import { AccountCard, AccountGate } from './account.jsx';
@@ -22,7 +22,7 @@ const views = [
   { id: 'calendar', name: 'Calendar', icon: CalendarDays, subtitle: 'See your events, budget entries, deposits and debt payments.' },
   { id: 'savings', name: 'Joint Savings', icon: PiggyBank, subtitle: 'See what each of you has put toward your shared goals.' },
   { id: 'debts', name: 'Debt Tracker', icon: Scale, subtitle: 'Track what you owe each other and record payments.' },
-  { id: 'settings', name: 'Settings', icon: SettingsIcon, subtitle: 'Personalize your dashboard.' },
+  { id: 'settings', name: 'Settings', icon: SettingsIcon, subtitle: 'Personalize your dashboard and export your records.' },
 ];
 
 const SIDEBAR_KEY = 'our-little-life.sidebar';
@@ -33,9 +33,9 @@ function getView() {
 
 function loadDashboard() {
   try {
-    return { state: readState(localStorage), error: '', legacy: Boolean(localStorage.getItem(LEGACY_KEY)) };
+    return { state: readState(localStorage), error: '' };
   } catch (error) {
-    return { state: freshData(), error: error.message, legacy: false };
+    return { state: freshData(), error: error.message };
   }
 }
 
@@ -75,7 +75,7 @@ function exportExcel(state, totals) {
 
 function App() {
   const [loaded, setLoaded] = useState(loadDashboard);
-  const { state, error, legacy } = loaded;
+  const { state, error } = loaded;
   const [active, setActive] = useState(getView);
   const [month, setMonth] = useState(() => localDate().slice(0, 7));
   const [calendarMonth, setCalendarMonth] = useState(() => localDate().slice(0, 7));
@@ -204,21 +204,19 @@ function App() {
         <div><div className="date-kicker"><CalendarDays size={14}/>{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</div><h1>{view.name}</h1><p>{view.subtitle}</p></div>
         {active !== 'settings' && <div className="header-actions">
           {active === 'budget' && <MonthSelector {...{ month, setMonth }}/>}
-          <button className="btn secondary export-btn" onClick={() => exportExcel(state, totals)}><Download size={16}/> Export Excel</button>
           {active === 'calendar' && <button className="btn primary" onClick={() => setModal({ kind: 'event', date: selectedDay })}><Plus size={17}/> Add event</button>}
           {active === 'debts' && <button className="btn primary" onClick={() => setModal({ kind: 'debt' })}><Plus size={17}/> Log debt</button>}
           {active !== 'calendar' && active !== 'debts' && <button className="btn primary" onClick={addEntry}><Plus size={17}/> Add entry</button>}
         </div>}
       </header>
       {error && <p className="inline-alert" role="alert">Saved data could not be loaded. {error}</p>}
-      {legacy && <p className="inline-alert">An earlier encrypted planner was found in this browser. Its data is separate from this dashboard.</p>}
       <div className="page-body">
         {active === 'dashboard' && <Dashboard state={state} totals={totals} me={session.me} open={setModal} navigate={navigate}/>}
         {active === 'budget' && <Budget {...{ state, totals, month, save, edit, remove }} open={setModal}/>}
         {active === 'calendar' && <CalendarView state={state} open={setModal} month={calendarMonth} setMonth={setCalendarMonth} selected={selectedDay} setSelected={setSelectedDay}/>}
         {active === 'savings' && <Savings {...{ state, totals, edit, remove }} open={setModal}/>}
         {active === 'debts' && <DebtTracker debts={state.debts} open={setModal}/>}
-        {active === 'settings' && <>{cloudOn && <AccountCard session={session} signOut={signOut}/>}<Settings key={state.accentColor} accent={state.accentColor} save={save}/><TreeSettings key={state.tree.kind + state.tree.perMeter} tree={state.tree} save={save}/></>}
+        {active === 'settings' && <>{cloudOn && <AccountCard session={session} signOut={signOut}/>}<Settings key={state.accentColor} accent={state.accentColor} save={save}/><TreeSettings key={state.tree.kind + state.tree.perMeter} tree={state.tree} save={save}/><ExportCard onExport={() => exportExcel(state, totals)}/></>}
       </div>
     </main>
     {modal && <Dialogs key={modal.kind + (modal.item?.id ?? '')} {...{ modal, state, totals, save }} me={session.me} close={() => setModal(null)} onEventSaved={date => { setSelectedDay(date); setCalendarMonth(date.slice(0, 7)); }}/>}

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Check, RotateCcw } from 'lucide-react';
+import { Check, Download, RotateCcw } from 'lucide-react';
 import { DEFAULT_ACCENT, LEGACY_ACCENT, accentStyles, parseAccent } from './appearance.js';
 import { ActionForm, PanelHeading } from './ui.jsx';
 import { decimalUnits } from './model.js';
@@ -84,5 +84,12 @@ export function TreeSettings({ tree, save }) {
       </fieldset>
       <label>Savings for each meter ($)<input name="perMeter" type="number" min="1" max="1000000" step="0.01" defaultValue={tree.perMeter / 100} required/></label>
     </ActionForm>
+  </section>;
+}
+
+export function ExportCard({ onExport }) {
+  return <section className="card settings-card">
+    <PanelHeading title="Export" subtitle="Download every entry, category, goal, event and debt as an Excel workbook."
+      action={<button className="btn secondary" onClick={onExport}><Download size={16}/> Export Excel</button>}/>
   </section>;
 }
