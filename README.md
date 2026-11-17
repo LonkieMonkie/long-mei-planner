@@ -36,6 +36,10 @@ This version stores its records in ordinary browser localStorage. Each browser a
 
 The dashboard uses a new storage key. It leaves data in the earlier encrypted planner untouched and does not import those records. Export or back up the earlier planner before deploying this version if you need to retain access to those records.
 
+## Releases
+
+Settings shows the version and changelog from `src/changelog.js`. For each release, add an entry there and bump `version` in `package.json` to match; a test checks that they agree.
+
 ## Login and syncing (optional)
 
 With `src/firebase-config.js` left as `null`, the planner works as described above: no login, data in this browser only.

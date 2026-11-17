@@ -316,3 +316,15 @@ test('personal savings add deposits, withdrawals and the Personal share of incom
   const items = calendarItems(state, ['2026-11-12']).get('2026-11-12');
   assert.deepEqual(items.map(item => [item.kind, item.title, item.amount]), [['saving', 'Taken from Long’s savings', -4050]]);
 });
+
+test('the changelog lists the package version first, newest release on top', async () => {
+  const { CHANGELOG, VERSION } = await import('../src/changelog.js');
+  const { readFileSync } = await import('node:fs');
+  assert.equal(VERSION, JSON.parse(readFileSync(new URL('../package.json', import.meta.url))).version);
+  const parts = version => version.split('.').map(Number);
+  for (let i = 1; i < CHANGELOG.length; i++) {
+    const [a, b] = [parts(CHANGELOG[i - 1].version), parts(CHANGELOG[i].version)];
+    assert.ok(a[0] > b[0] || (a[0] === b[0] && (a[1] > b[1] || (a[1] === b[1] && a[2] > b[2]))), `${CHANGELOG[i - 1].version} should be newer than ${CHANGELOG[i].version}`);
+    assert.ok(CHANGELOG[i].changes.length > 0);
+  }
+});

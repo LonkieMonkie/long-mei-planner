@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { Check, Download, RotateCcw } from 'lucide-react';
 import { DEFAULT_ACCENT, LEGACY_ACCENT, accentStyles, parseAccent } from './appearance.js';
 import { ActionForm, PanelHeading } from './ui.jsx';
-import { decimalUnits } from './model.js';
+import { decimalUnits, shortDate } from './model.js';
+import { CHANGELOG, VERSION } from './changelog.js';
 import { TREE_KINDS } from './tree-model.js';
 
 const presets = [
@@ -91,5 +92,15 @@ export function ExportCard({ onExport }) {
   return <section className="card settings-card">
     <PanelHeading title="Export" subtitle="Download every entry, category, goal, event and debt as an Excel workbook."
       action={<button className="btn secondary" onClick={onExport}><Download size={16}/> Export Excel</button>}/>
+  </section>;
+}
+
+export function VersionCard() {
+  return <section className="card settings-card">
+    <PanelHeading title="Version" subtitle={`Our Little Life ${VERSION} · updated ${shortDate(CHANGELOG[0].date)}`}/>
+    <div className="changelog">{CHANGELOG.map((release, index) => <details key={release.version} open={index === 0}>
+      <summary><strong>{release.version}</strong><span>{shortDate(release.date)}</span>{index === 0 && <em>Current</em>}</summary>
+      <ul>{release.changes.map(change => <li key={change}>{change}</li>)}</ul>
+    </details>)}</div>
   </section>;
 }
