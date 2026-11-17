@@ -84,7 +84,7 @@ test('saved expense rates survive category rule changes and edits to the amount'
 
 test('calendar combines entries and events through month boundaries, with no automatic paydays', () => {
   const state = freshData();
-  state.entries = [entryFromFields(fields(), state), entryFromFields(fields({ type: 'income', date: '2026-12-04' }), state)];
+  state.entries = [entryFromFields(fields(), state), entryFromFields(fields({ type: 'income', date: '2026-12-04', time: '09:00' }), state)];
   state.events = [{ id: 'event', title: 'Check-in', date: '2026-12-04', time: '18:00' }];
   const agenda = calendarItems(state, calendarDays('2026-12'));
   assert.deepEqual(agenda.get('2026-12-04').map(item => item.kind), ['income', 'event']);
