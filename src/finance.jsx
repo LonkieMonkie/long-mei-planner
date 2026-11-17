@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { ArrowDownLeft, ArrowDownRight, ArrowRight, CalendarDays, ChevronLeft, ChevronRight, CircleDollarSign, Heart, Landmark, LockKeyhole, Pencil, PiggyBank, Plus, SlidersHorizontal, Target, Wallet } from 'lucide-react';
+import { ArrowDownLeft, ArrowDownRight, ArrowRight, CalendarDays, ChevronLeft, ChevronRight, CircleDollarSign, Landmark, LockKeyhole, Pencil, PiggyBank, Plus, SlidersHorizontal, Target, Wallet } from 'lucide-react';
 import { PEOPLE, WEDDING_CATEGORY_ID, categoryColor, dateFromKey, isWeddingName, localDate, money, shiftMonth, shortDate } from './model.js';
+import { PlantPair } from './plants.jsx';
 import { CATEGORY_ICONS, Empty, EntryHistory, InlineName, PanelHeading, Person, Progress } from './ui.jsx';
 
 export function MonthSelector({ month, setMonth }) {
@@ -48,8 +49,8 @@ export function Dashboard({ state, totals, open, navigate }) {
   const upcoming = state.events.filter(event => event.date >= localDate()).sort((a,b) => (a.date + a.time).localeCompare(b.date + b.time)).slice(0, 3);
   return <>
     <section className="welcome-banner">
-      <div className="banner-copy"><span className="welcome-label"><Heart size={13}/> LONG &amp; MEI</span><h2>Welcome back, you two.</h2><p>See where your money goes and how close you are to your shared goals.</p><button className="btn primary" onClick={() => open({ kind: 'entry' })}><Plus size={17}/> Add an entry</button></div>
-      <div className="banner-art" aria-hidden="true"><div className="art-orbit one"/><div className="art-orbit two"/><div className="art-disc"/><div className="art-card back"><PiggyBank size={42}/><i/><i/></div><div className="art-card front"><Heart size={37}/><i/><i/></div><div className="art-spark">✦</div><div className="art-spark second">✧</div></div>
+      <div className="banner-copy"><h2>Welcome back, you two.</h2><p>See where your money goes and how close you are to your shared goals.</p><button className="btn primary" onClick={() => open({ kind: 'entry' })}><Plus size={17}/> Add an entry</button></div>
+      <div className="banner-plants"><PlantPair/></div>
     </section>
     <div className="stats-grid">
       <Stat icon={ArrowDownLeft} tone="mint" label="Total income" value={totals.income} caption="This month · both profiles"/>
@@ -61,7 +62,7 @@ export function Dashboard({ state, totals, open, navigate }) {
       <section className="card goal-preview">
         <PanelHeading title="Joint goals" subtitle="Track the goals you share" action={<button className="text-link" onClick={() => navigate('savings')}>View goals <ArrowRight size={14}/></button>}/>
         {goal && <div className="goal-preview-inner"><div className="goal-title"><span className="icon-tile indigo"><Target size={20}/></span><h3>{goal.name}</h3></div><GoalProgress goal={goal} totals={totals.goals[goal.id]}/></div>}
-        <div className="couple-note"><div className="avatar-pair"><Person id="long" onlyAvatar/><Person id="mei" onlyAvatar/></div><span>Two separate budgets, one shared goal.</span></div>
+        <div className="couple-note"><PlantPair mini/><span>Two separate budgets, one shared goal.</span></div>
       </section>
     </div>
     <div className="dashboard-columns lower-columns">

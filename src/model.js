@@ -1,4 +1,4 @@
-import { DEFAULT_ACCENT, parseAccent } from './appearance.js';
+import { DEFAULT_ACCENT, LEGACY_ACCENT, parseAccent } from './appearance.js';
 
 export const STORAGE_KEY = 'our-little-life.dashboard.v2';
 export const LEGACY_KEY = 'our-little-life.v1';
@@ -71,7 +71,7 @@ export function freshData() {
     ],
     goals: [{ ...weddingGoal }],
     entries: [], events: [], debts: [], firstPaydays: { ...FIRST_PAYDAYS },
-    savingsAdjustment: 0, accentColor: DEFAULT_ACCENT,
+    savingsAdjustment: 0, accentColor: DEFAULT_ACCENT, theme: 'garden',
   };
 }
 
@@ -259,5 +259,8 @@ export function readState(storage) {
     return [id, isDateKey(date) && dateFromKey(date).getDay() === 5 ? date : FIRST_PAYDAYS[id]];
   }));
   state.accentColor = parseAccent(state.accentColor) ?? DEFAULT_ACCENT;
+  // The garden redesign made sage the default. Move the old default over once; later choices are kept.
+  if (state.theme !== 'garden' && state.accentColor === LEGACY_ACCENT) state.accentColor = DEFAULT_ACCENT;
+  state.theme = 'garden';
   return state;
 }

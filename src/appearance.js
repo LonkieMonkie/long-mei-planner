@@ -1,4 +1,5 @@
-export const DEFAULT_ACCENT = '#5744c5';
+export const DEFAULT_ACCENT = '#4c8363';
+export const LEGACY_ACCENT = '#5744c5';
 
 export function parseAccent(value) {
   if (typeof value !== 'string') return null;

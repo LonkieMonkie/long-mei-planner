@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { Check, RotateCcw } from 'lucide-react';
-import { DEFAULT_ACCENT, accentStyles, parseAccent } from './appearance.js';
+import { DEFAULT_ACCENT, LEGACY_ACCENT, accentStyles, parseAccent } from './appearance.js';
 import { PanelHeading } from './ui.jsx';
 
 const presets = [
-  ['Lavender', DEFAULT_ACCENT], ['Rose', '#aa416e'], ['Sage', '#42745d'],
+  ['Sage', DEFAULT_ACCENT], ['Rose', '#aa416e'], ['Lavender', LEGACY_ACCENT],
   ['Ocean', '#256593'], ['Terracotta', '#a45335'], ['Plum', '#81539c'],
 ];
 
@@ -33,7 +33,7 @@ export function Settings({ accent, save }) {
     <form className="form-stack" onSubmit={event => {
       event.preventDefault();
       if (validAccent) apply(validAccent);
-      else setError('Enter a six-digit hex color, such as #42745D.');
+      else setError('Enter a six-digit hex color, such as #4C8363.');
     }}>
       <fieldset className="accent-presets">
         <legend>Accent presets</legend>

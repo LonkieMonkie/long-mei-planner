@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { CalendarDays, CircleCheck, Download, Heart, LayoutGrid, PiggyBank, Plus, Scale, Settings as SettingsIcon, Wallet } from 'lucide-react';
+import { CalendarDays, CircleCheck, Download, LayoutGrid, PiggyBank, Plus, Scale, Settings as SettingsIcon, Sprout, Wallet } from 'lucide-react';
 import { Budget, Dashboard, MonthSelector, Savings } from './finance.jsx';
 import { CalendarView } from './calendar.jsx';
 import { DebtTracker } from './debts.jsx';
 import { Dialogs } from './dialogs.jsx';
 import { Settings } from './settings.jsx';
 import { accentStyles } from './appearance.js';
-import { Person } from './ui.jsx';
+import { PlantPair } from './plants.jsx';
 import { LEGACY_KEY, PEOPLE, STORAGE_KEY, categoryColor, entryContribution, entryTime, freshData, localDate, readState, summarize } from './model.js';
 import { workbook } from './excel.js';
 import './style.css';
@@ -109,10 +109,10 @@ function App() {
   const remove = item => setModal({ kind: 'delete-entry', item });
   return <div className="app-shell" style={accentStyles(state.accentColor)}>
     <aside className="sidebar">
-      <a href="#dashboard" className="brand"><span className="brand-mark"><Heart size={21} strokeWidth={2.3}/></span><span>Our Little Life<small>Long &amp; Mei</small></span></a>
+      <a href="#dashboard" className="brand"><span className="brand-mark"><Sprout size={21} strokeWidth={2.3}/></span><span>Our Little Life<small>Long &amp; Mei</small></span></a>
       <nav aria-label="Main navigation">{views.map(({ id, name, icon: Icon }) => <a key={id} href={`#${id}`} aria-current={active === id ? 'page' : undefined} className={active === id ? 'active' : ''}><Icon size={19}/><span>{name}</span></a>)}</nav>
       <div className="side-bottom">
-        <div className="side-profiles"><div className="avatar-pair"><Person id="long" onlyAvatar/><Person id="mei" onlyAvatar/></div><span>Long &amp; Mei<small>Two profiles</small></span></div>
+        <div className="side-profiles"><PlantPair mini/><span>Long &amp; Mei<small>Two profiles</small></span></div>
         <div className="local-status"><span/> Saved on this device</div>
       </div>
     </aside>
