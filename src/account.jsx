@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { LogOut } from 'lucide-react';
 import { PEOPLE } from './model.js';
 import { Plant, PlantPair } from './plants.jsx';
@@ -17,8 +17,10 @@ function Gate({ title, children }) {
   return <main className="gate"><section className="card gate-card"><PlantPair/><h1>{title}</h1>{children}</section></main>;
 }
 
-export function AccountGate({ session, signIn, signOut, chooseProfile }) {
+export function AccountGate({ session, signIn, signOut, chooseProfile, resetPassword }) {
   const [error, setError] = useState('');
+  const [sent, setSent] = useState('');
+  const form = useRef(null);
   const [busy, setBusy] = useState(false);
   if (session.status === 'loading') return <Gate title="Opening your planner"><p className="field-help">Getting the latest from your shared planner.</p></Gate>;
   if (session.status === 'error') return <Gate title="The planner couldn’t open">
@@ -35,16 +37,25 @@ export function AccountGate({ session, signIn, signOut, chooseProfile }) {
     <div className="form-actions"><button className="btn secondary" onClick={signOut}>Sign out</button></div>
   </Gate>;
   return <Gate title="Welcome back, you two">
-    <form className="form-stack" onSubmit={event => {
+    <form className="form-stack" ref={form} onSubmit={event => {
       event.preventDefault();
       const fields = Object.fromEntries(new FormData(event.currentTarget));
-      setBusy(true); setError('');
+      setBusy(true); setError(''); setSent('');
       signIn(fields.email.trim(), fields.password, fields.remember === 'on').catch(e => setError(signInErrors[e.code] ?? 'Sign-in failed. Try again.')).finally(() => setBusy(false));
     }}>
       <label>Email<input name="email" type="email" autoComplete="username" required autoFocus/></label>
       <label>Password<input name="password" type="password" autoComplete="current-password" required/></label>
+      <button type="button" className="text-link forgot" disabled={busy} onClick={() => {
+        const email = form.current.elements.email.value.trim();
+        setError(''); setSent('');
+        if (!email) { setError('Enter your email above, then choose Forgot password.'); return; }
+        setBusy(true);
+        resetPassword(email).then(() => setSent(`If ${email} has an account, a reset link is on its way. Check your inbox and spam folder.`))
+          .catch(e => setError(signInErrors[e.code] ?? 'The reset email couldn’t be sent. Try again.')).finally(() => setBusy(false));
+      }}>Forgot password?</button>
       <label className="check-row"><input name="remember" type="checkbox" defaultChecked/>Remember me on this device</label>
       {error && <p className="form-error" role="alert">{error}</p>}
+      {sent && <p className="form-note" role="status">{sent}</p>}
       <div className="form-actions"><button className="btn primary" disabled={busy}>{busy ? 'Signing in' : 'Sign in'}</button></div>
     </form>
   </Gate>;

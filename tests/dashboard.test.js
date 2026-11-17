@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { STORAGE_KEY, WEDDING_CATEGORY_ID, contribution, entryFromFields, freshData, localDate, localTime, readState, setJointBalance, summarize,
-  calendarDays, calendarItems, isPayday, debtFromFields, debtBalances, settleDebt } from '../src/model.js';
+  calendarDays, calendarItems, debtFromFields, debtBalances, settleDebt } from '../src/model.js';
 
 const fields = (overrides = {}) => ({
   personId: 'long', type: 'expense', categoryId: 'transport', source: 'Paycheck', amount: '300',
@@ -82,18 +82,45 @@ test('saved expense rates survive category rule changes and edits to the amount'
   assert.equal(summarize(state).totalContributions, 1000);
 });
 
-test('calendar combines alternating paydays, entries and events through month and DST boundaries', () => {
+test('calendar combines entries and events through month boundaries, with no automatic paydays', () => {
   const state = freshData();
   state.entries = [entryFromFields(fields(), state), entryFromFields(fields({ type: 'income', date: '2026-12-04' }), state)];
   state.events = [{ id: 'event', title: 'Check-in', date: '2026-12-04', time: '18:00' }];
   const agenda = calendarItems(state, calendarDays('2026-12'));
-  assert.deepEqual(agenda.get('2026-12-04').map(item => item.kind), ['payday', 'income', 'event']);
-  assert.equal(agenda.get('2026-12-11')[0].personId, 'long');
-  assert.equal(agenda.get('2026-12-18')[0].personId, 'mei');
-  assert.equal(agenda.get('2026-12-25')[0].personId, 'long');
-  assert.equal(calendarItems(state, ['2026-11-27']).get('2026-11-27')[1].title, 'Transportation');
-  assert.equal(isPayday('2026-11-13', state.firstPaydays.long), false);
-  assert.equal(isPayday('2027-03-19', state.firstPaydays.long), true);
+  assert.deepEqual(agenda.get('2026-12-04').map(item => item.kind), ['income', 'event']);
+  assert.deepEqual(agenda.get('2026-12-11'), []);
+  assert.equal(calendarItems(state, ['2026-11-27']).get('2026-11-27')[0].title, 'Transportation');
+  const old = { ...state, firstPaydays: { long: '2026-11-27', mei: '2026-12-04' } };
+  assert.equal('firstPaydays' in readState({ getItem: () => JSON.stringify(old) }), false);
+});
+
+test('repeating events end on a date or after a count, skip deleted dates, and survive DST', async () => {
+  const { deleteEvent, eventFromFields, occursOn, upcomingEvents } = await import('../src/events.js');
+  const base = { title: 'Rent', date: '2027-01-31', time: '', description: '' };
+  const monthly = eventFromFields({ ...base, freq: 'monthly', ends: 'after', count: '3' }, 'rent');
+  assert.deepEqual(['2027-01-31', '2027-02-28', '2027-03-31', '2027-04-30'].map(day => occursOn(monthly, day)), [true, true, true, false]);
+  const weekly = eventFromFields({ ...base, date: '2026-11-06', freq: 'weekly', ends: 'on', until: '2026-11-27' }, 'gym');
+  assert.deepEqual(['2026-11-06', '2026-11-13', '2026-11-27', '2026-12-04', '2026-11-10'].map(day => occursOn(weekly, day)), [true, true, true, false, false]);
+  const biweekly = eventFromFields({ ...base, date: '2026-10-30', freq: 'biweekly', ends: 'never' }, 'pay');
+  assert.equal(occursOn(biweekly, '2027-03-19'), true); // across the November daylight-saving change
+  assert.equal(occursOn(biweekly, '2027-03-26'), false);
+  assert.throws(() => eventFromFields({ ...base, freq: 'weekly', ends: 'on', until: '2027-01-01' }));
+  assert.throws(() => eventFromFields({ ...base, freq: 'weekly', ends: 'after', count: '0' }));
+
+  let events = deleteEvent([weekly], 'gym', '2026-11-13', 'one');
+  assert.deepEqual(['2026-11-06', '2026-11-13', '2026-11-20'].map(day => occursOn(events[0], day)), [true, false, true]);
+  events = deleteEvent(events, 'gym', '2026-11-20', 'following');
+  assert.deepEqual(events[0].repeat, { freq: 'weekly', ends: 'on', until: '2026-11-19' });
+  assert.equal(occursOn(events[0], '2026-11-06'), true);
+  assert.equal(deleteEvent([monthly], 'rent', '2027-02-28', 'following')[0].repeat.until, '2027-01-31');
+  assert.deepEqual(deleteEvent(events, 'gym', '2026-11-06', 'all'), []);
+
+  assert.deepEqual(upcomingEvents([biweekly, weekly], '2026-11-07', 3).map(({ event, date }) => [event.id, date]),
+    [['pay', '2026-11-13'], ['gym', '2026-11-13'], ['gym', '2026-11-20']]);
+  const saved = { ...freshData(), events: [{ ...weekly, repeat: { freq: 'hourly' } }, { ...monthly, skip: ['bad', '2027-02-28'] }] };
+  const read = readState({ getItem: () => JSON.stringify(saved) });
+  assert.equal('repeat' in read.events[0], false);
+  assert.deepEqual(read.events[1].skip, ['2027-02-28']);
 });
 
 test('settling one debt preserves both ledger records and updates the net in cents', () => {

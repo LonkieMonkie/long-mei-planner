@@ -1,5 +1,6 @@
 import { DEFAULT_ACCENT, LEGACY_ACCENT, parseAccent } from './appearance.js';
 import { DEFAULT_TREE, normalizeTree } from './tree-model.js';
+import { normalizeEvent, occursOn } from './events.js';
 
 export const STORAGE_KEY = 'our-little-life.dashboard.v2';
 export const LEGACY_KEY = 'our-little-life.v1';
@@ -7,7 +8,6 @@ export const PEOPLE = [
   { id: 'long', name: 'Long', initials: 'L', tone: 'indigo' },
   { id: 'mei', name: 'Mei', initials: 'M', tone: 'rose' },
 ];
-export const FIRST_PAYDAYS = { long: '2026-11-27', mei: '2026-12-04' };
 export const WEDDING_CATEGORY_ID = 'wedding';
 const WEDDING_GOAL_ID = 'wedding';
 
@@ -71,7 +71,7 @@ export function freshData() {
       { id: 'bills', name: 'Bills & subscriptions', limit: 0, icon: 'receipt', tone: 'mint' },
     ],
     goals: [{ ...weddingGoal }],
-    entries: [], events: [], debts: [], firstPaydays: { ...FIRST_PAYDAYS },
+    entries: [], events: [], debts: [],
     savingsAdjustment: 0, accentColor: DEFAULT_ACCENT, theme: 'garden', tree: { ...DEFAULT_TREE },
   };
 }
@@ -145,21 +145,8 @@ export function setJointBalance(state, desired) {
   return { ...state, savingsAdjustment: desired - summarize(state).totalContributions };
 }
 
-export function isPayday(date, firstPayday) {
-  if (date < firstPayday) return false;
-  // Date-only strings parse at UTC midnight, so daylight saving never shifts the cycle.
-  return (Date.parse(date) - Date.parse(firstPayday)) % (14 * 86_400_000) === 0;
-}
-
 export function calendarItems(state, dates) {
   const byDate = new Map(dates.map(date => [date, []]));
-  for (const [date, items] of byDate) {
-    for (const person of PEOPLE) {
-      if (isPayday(date, state.firstPaydays[person.id])) {
-        items.push({ id: 'payday:' + person.id, kind: 'payday', title: person.name + ' payday', personId: person.id });
-      }
-    }
-  }
   const categories = new Map(state.categories.map(category => [category.id, category]));
   for (const entry of state.entries) {
     const items = byDate.get(entry.date);
@@ -184,8 +171,10 @@ export function calendarItems(state, dates) {
     byDate.get(localDate(paidAt))?.push({ id: 'payment:' + debt.id, kind: 'payment',
       title: 'Debt paid: ' + debt.description, debt, time: localTime(paidAt) });
   }
-  for (const event of state.events) {
-    byDate.get(event.date)?.push({ id: 'event:' + event.id, kind: 'event', title: event.title, time: event.time, event });
+  for (const [date, items] of byDate) {
+    for (const event of state.events) {
+      if (occursOn(event, date)) items.push({ id: 'event:' + event.id + ':' + date, kind: 'event', title: event.title, time: event.time, event, date });
+    }
   }
   for (const items of byDate.values()) items.sort((a, b) => (a.time ?? '').localeCompare(b.time ?? ''));
   return byDate;
@@ -255,10 +244,9 @@ export function readState(storage) {
     state.entries = state.entries.map(entry => entry.categoryId === category.id ? { ...entry, categoryId: WEDDING_CATEGORY_ID } : entry);
   }
   if (!state.goals.some(goal => goal.id === WEDDING_GOAL_ID)) state.goals.unshift({ ...weddingGoal });
-  state.firstPaydays = Object.fromEntries(PEOPLE.map(({ id }) => {
-    const date = state.firstPaydays?.[id];
-    return [id, isDateKey(date) && dateFromKey(date).getDay() === 5 ? date : FIRST_PAYDAYS[id]];
-  }));
+  // Automatic biweekly paydays were removed; repeating events replace them.
+  delete state.firstPaydays;
+  state.events = state.events.map(normalizeEvent);
   state.accentColor = parseAccent(state.accentColor) ?? DEFAULT_ACCENT;
   // The garden redesign made sage the default. Move the old default over once; later choices are kept.
   if (state.theme !== 'garden' && state.accentColor === LEGACY_ACCENT) state.accentColor = DEFAULT_ACCENT;

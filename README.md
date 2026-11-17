@@ -24,7 +24,7 @@ Open the localhost URL shown in the terminal. Edit files in `src`. The productio
 - Budget limits recur monthly. Expenses are counted by transaction date and current category ID. The history retains the category name recorded when an entry was saved.
 - New income records are raw amounts. Each new expense uses its category’s savings rate for the selected person, rounded once to the nearest cent. Saved expenses keep that rate when you edit the amount. Changing the person or category uses the destination rule. Deleting removes the recorded amount and contribution. Existing income contributions from the prior version are kept in history until the entry is edited or deleted.
 - Editing the joint balance records the difference between the stated balance and the contributions already logged. Later entry changes still adjust that balance by the exact difference. The manual adjustment belongs to the overall balance.
-- The calendar combines budget entries and local events with alternating biweekly paydays starting November 27, 2026 for Long and December 4, 2026 for Mei. A payday reminder is separate from a logged paycheck.
+- The calendar combines budget entries, deposits, debt payments and events. An event can repeat every day, week, two weeks, month or year, and end on a date or after a number of times. Monthly and yearly repeats on the 29th to 31st fall on the last day of shorter months. Deleting a repeating event removes one date, that date and later ones, or every date.
 - The debt ledger offsets open balances in both directions. Settling a debt records its payment timestamp and keeps it in the history.
 - Export Excel includes entries, category settings, goal totals, local events and debt history.
 

@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { ArrowDownLeft, ArrowUpRight, PiggyBank } from 'lucide-react';
-import { PEOPLE, WEDDING_CATEGORY_ID, contribution, debtFromFields, decimalUnits, entryContribution, entryFromFields, entryTime, isDateKey, localDate, localTime, money, savingsRule, setJointBalance, settleDebt } from './model.js';
+import { PEOPLE, WEDDING_CATEGORY_ID, contribution, debtFromFields, decimalUnits, entryContribution, entryFromFields, entryTime, localDate, localTime, money, shortDate, savingsRule, setJointBalance, settleDebt } from './model.js';
 import { ActionForm, Modal } from './ui.jsx';
 import { CategoryForm } from './category-form.jsx';
+import { REPEATS, deleteEvent, eventFromFields } from './events.js';
 
 function EntryForm({ state, item, date, person, me, weddingDeposit = false, close, save }) {
   const [type, setType] = useState(weddingDeposit ? 'expense' : item?.type ?? 'income');
@@ -63,7 +64,7 @@ export function Dialogs({ modal, state, totals, me, close, save, onEventSaved })
     'wedding-deposit': 'Add Wedding deposit',
     category: item ? item.name + ' settings' : 'Add a budget category', limit: 'Edit budget limit',
     balance: 'Edit joint balance', goal: item ? 'Edit savings goal' : 'Add a savings goal',
-    event: 'Add local event', 'delete-event': 'Delete event?', 'delete-entry': 'Delete entry?',
+    event: 'Add event', 'delete-event': item?.repeat ? 'Delete repeating event?' : 'Delete event?', 'delete-entry': 'Delete entry?',
     debt: 'Log a debt', 'settle-debt': 'Confirm payment?',
   };
   const done = (update, message) => { save(update, message); close(); };
@@ -98,15 +99,7 @@ export function Dialogs({ modal, state, totals, me, close, save, onEventSaved })
       }}><label>Goal name<input name="name" defaultValue={item?.name} placeholder="e.g. Wedding" maxLength={70} required autoFocus/></label><label>Target ($)<input name="target" type="number" min="0.01" max="1000000000" step="0.01" defaultValue={item ? item.target / 100 : ''} required/></label></ActionForm>;
       break;
     case 'event':
-      content = <ActionForm cancel={close} label="Save event" onSave={fields => {
-        const title = titleValue(fields.title, 'title');
-        if (!isDateKey(fields.date)) throw new Error('Choose a valid event date.');
-        const event = { id: crypto.randomUUID(), title, date: fields.date, time: fields.time, description: fields.description.trim() };
-        done(current => ({ ...current, events: [...current.events, event] }), 'Local event saved');
-        onEventSaved(fields.date);
-      }}><label>Title<input name="title" maxLength={100} placeholder="e.g. Budget check-in" required autoFocus/></label>
-      <div className="form-row"><label>Date<input name="date" type="date" defaultValue={modal.date ?? localDate()} required/></label><label>Time<input name="time" type="time"/></label></div>
-      <label>Description<textarea name="description" rows={3} maxLength={1000} placeholder="Optional details"/></label></ActionForm>;
+      content = <EventForm date={modal.date} close={close} done={done} onEventSaved={onEventSaved}/>;
       break;
     case 'debt':
       content = <DebtForm close={close} done={done} me={me}/>;
@@ -116,15 +109,14 @@ export function Dialogs({ modal, state, totals, me, close, save, onEventSaved })
         done(current => settleDebt(current, item.id), 'Payment recorded');
       }}><p className="field-help">Mark {money(item.amount)} for “{item.description}” as paid in full? The calendar records the date and time you confirm.</p></ActionForm>;
       break;
-    case 'delete-entry':
-    case 'delete-event': {
-      const isEntry = kind === 'delete-entry';
-      const collection = isEntry ? 'entries' : 'events';
-      content = <ActionForm cancel={close} label={isEntry ? 'Delete entry' : 'Delete event'} onSave={() => {
-        done(current => ({ ...current, [collection]: current[collection].filter(entry => entry.id !== item.id) }), isEntry ? 'Entry deleted. Totals updated.' : 'Event deleted');
-      }}><p className="field-help">{isEntry ? `Delete the ${item.source} entry for ${money(item.amount)}?${entryContribution(item) ? ' Its ' + money(entryContribution(item)) + ' joint contribution will be reversed.' : ''}` : `Remove “${item.title}” from your local calendar?`}</p></ActionForm>;
+    case 'delete-event':
+      content = <DeleteEvent event={item} date={modal.date ?? item.date} close={close} done={done}/>;
       break;
-    }
+    case 'delete-entry':
+      content = <ActionForm cancel={close} label="Delete entry" onSave={() => {
+        done(current => ({ ...current, entries: current.entries.filter(entry => entry.id !== item.id) }), 'Entry deleted. Totals updated.');
+      }}><p className="field-help">{`Delete the ${item.source} entry for ${money(item.amount)}?${entryContribution(item) ? ' Its ' + money(entryContribution(item)) + ' joint contribution will be reversed.' : ''}`}</p></ActionForm>;
+      break;
   }
   return <Modal title={titles[kind]} close={close}>{content}</Modal>;
 }
@@ -147,4 +139,49 @@ function DebtForm({ close, done, me }) {
     {me ? <input type="hidden" name="addedBy" value={me}/>
       : <label>Logged by<select name="addedBy">{PEOPLE.map(person => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label>}
   </ActionForm>;
+}
+
+function EventForm({ date, close, done, onEventSaved }) {
+  const [freq, setFreq] = useState('none');
+  const [ends, setEnds] = useState('never');
+  const [start, setStart] = useState(date ?? localDate());
+  const unit = REPEATS.find(item => item.id === freq).unit;
+  return <ActionForm cancel={close} label="Save event" onSave={fields => {
+    const event = eventFromFields(fields);
+    done(current => ({ ...current, events: [...current.events, event] }), event.repeat ? 'Repeating event saved' : 'Event saved');
+    onEventSaved(event.date);
+  }}>
+    <label>Title<input name="title" maxLength={100} placeholder="e.g. Rent due" required autoFocus/></label>
+    <div className="form-row">
+      <label>Date<input name="date" type="date" value={start} onChange={e => setStart(e.target.value)} required/></label>
+      <label>Time<input name="time" type="time"/></label>
+    </div>
+    <label>Repeat<select name="freq" value={freq} onChange={e => setFreq(e.target.value)}>{REPEATS.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+    {freq !== 'none' && <div className="form-row">
+      <label>Ends<select name="ends" value={ends} onChange={e => setEnds(e.target.value)}>
+        <option value="never">Never</option><option value="on">On a date</option><option value="after">After a number of times</option>
+      </select></label>
+      {ends === 'on' && <label>Last date<input name="until" type="date" min={start} required/></label>}
+      {ends === 'after' && <label>Number of times<input name="count" type="number" min="1" max="999" step="1" defaultValue="10" required/></label>}
+    </div>}
+    {freq !== 'none' && <p className="field-help">Repeats every {unit} from {start ? shortDate(start) : 'the date above'}{ends === 'never' ? ', with no end date' : ''}.{freq === 'monthly' || freq === 'yearly' ? ' Dates past the end of a shorter month move to its last day.' : ''}</p>}
+    <label>Description<textarea name="description" rows={3} maxLength={1000} placeholder="Optional details"/></label>
+  </ActionForm>;
+}
+
+function DeleteEvent({ event, date, close, done }) {
+  const remove = scope => done(current => ({ ...current, events: deleteEvent(current.events, event.id, date, scope) }),
+    scope === 'one' ? 'Event removed from ' + shortDate(date) : 'Event deleted');
+  if (!event.repeat) return <ActionForm cancel={close} label="Delete event" onSave={() => remove('all')}>
+    <p className="field-help">Remove “{event.title}” on {shortDate(date)} from your calendar?</p>
+  </ActionForm>;
+  return <div className="form-stack">
+    <p className="field-help">“{event.title}” repeats. What do you want to delete?</p>
+    <div className="delete-choices">
+      <button type="button" className="btn secondary" onClick={() => remove('one')}>Only {shortDate(date)}</button>
+      {date > event.date && <button type="button" className="btn secondary" onClick={() => remove('following')}>{shortDate(date)} and later</button>}
+      <button type="button" className="btn secondary danger-text" onClick={() => remove('all')}>Every date</button>
+    </div>
+    <div className="form-actions"><button type="button" className="btn secondary" onClick={close}>Cancel</button></div>
+  </div>;
 }

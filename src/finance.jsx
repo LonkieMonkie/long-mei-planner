@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ArrowDownLeft, ArrowDownRight, ArrowRight, CalendarDays, ChevronLeft, ChevronRight, CircleDollarSign, Landmark, LockKeyhole, Pencil, PiggyBank, Plus, SlidersHorizontal, Target, Wallet } from 'lucide-react';
-import { PEOPLE, WEDDING_CATEGORY_ID, categoryColor, dateFromKey, isWeddingName, localDate, money, shiftMonth, shortDate } from './model.js';
+import { upcomingEvents } from './events.js';
+import { PEOPLE, WEDDING_CATEGORY_ID, categoryColor, dateFromKey, displayTime, isWeddingName, localDate, money, shiftMonth, shortDate } from './model.js';
 import { PlantPair } from './plants.jsx';
 import { SavingsTree } from './tree.jsx';
 import { CATEGORY_ICONS, Empty, EntryHistory, InlineName, PanelHeading, Person, Progress } from './ui.jsx';
@@ -45,12 +46,13 @@ function GoalProgress({ goal, totals }) {
   </>;
 }
 
-export function Dashboard({ state, totals, open, navigate }) {
+export function Dashboard({ state, totals, me, open, navigate }) {
   const goal = state.goals[0];
-  const upcoming = state.events.filter(event => event.date >= localDate()).sort((a,b) => (a.date + a.time).localeCompare(b.date + b.time)).slice(0, 3);
+  const upcoming = upcomingEvents(state.events, localDate());
+  const name = PEOPLE.find(person => person.id === me)?.name;
   return <>
     <section className="welcome-banner">
-      <div className="banner-copy"><h2>Welcome back, you two.</h2><p>See where your money goes and how close you are to your shared goals.</p><button className="btn primary" onClick={() => open({ kind: 'entry' })}><Plus size={17}/> Add an entry</button></div>
+      <div className="banner-copy"><h2>{name ? `Welcome back, ${name}.` : 'Welcome back, you two.'}</h2><p>See where your money goes and how close you are to your shared goals.</p><button className="btn primary" onClick={() => open({ kind: 'entry' })}><Plus size={17}/> Add an entry</button></div>
       <div className="banner-plants"><PlantPair/></div>
     </section>
     <div className="stats-grid">
@@ -73,7 +75,7 @@ export function Dashboard({ state, totals, open, navigate }) {
       </section>
       <section className="card">
         <PanelHeading title="Upcoming events" action={<button className="text-link" onClick={() => navigate('calendar')}>Calendar <ArrowRight size={14}/></button>}/>
-        {!upcoming.length ? <Empty icon={CalendarDays}>No upcoming local events.</Empty> : upcoming.map(event => <div className="upcoming" key={event.id}><span className="icon-tile blue"><CalendarDays size={17}/></span><span><strong>{event.title}</strong><small>{shortDate(event.date)}</small></span></div>)}
+        {!upcoming.length ? <Empty icon={CalendarDays}>No upcoming events.</Empty> : upcoming.map(({ event, date }) => <div className="upcoming" key={event.id + date}><span className="icon-tile blue"><CalendarDays size={17}/></span><span><strong>{event.title}</strong><small>{shortDate(date)}{event.time && ' · ' + displayTime(event.time)}{event.repeat && ' · repeats'}</small></span></div>)}
       </section>
     </div>
   </>;

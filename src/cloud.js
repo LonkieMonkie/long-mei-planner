@@ -17,6 +17,7 @@ export async function connect(config) {
       return auth.signInWithEmailAndPassword(session, email, password);
     },
     signOut: () => auth.signOut(session),
+    resetPassword: email => auth.sendPasswordResetEmail(session, email),
     // Calls onData with the shared document (or null before it exists) every time it changes.
     subscribe: (onData, onError) => store.onSnapshot(ref, { includeMetadataChanges: true },
       snapshot => onData(snapshot.exists() ? snapshot.data() : null, snapshot.metadata.fromCache), onError),

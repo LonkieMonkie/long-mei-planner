@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { CalendarDays, CircleAlert, CircleCheck, Download, LayoutGrid, PiggyBank, Plus, Scale, Settings as SettingsIcon, Sprout, Wallet } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, CircleAlert, CircleCheck, Download, LayoutGrid, PiggyBank, Plus, Scale, Settings as SettingsIcon, Sprout, Wallet } from 'lucide-react';
 import { Budget, Dashboard, MonthSelector, Savings } from './finance.jsx';
 import { CalendarView } from './calendar.jsx';
 import { DebtTracker } from './debts.jsx';
@@ -10,6 +10,7 @@ import { accentStyles } from './appearance.js';
 import { PlantPair } from './plants.jsx';
 import { LEGACY_KEY, PEOPLE, STORAGE_KEY, categoryColor, entryContribution, entryTime, freshData, localDate, readState, summarize } from './model.js';
 import { workbook } from './excel.js';
+import { repeatSummary } from './events.js';
 import { AccountCard, AccountGate } from './account.jsx';
 import { connect } from './cloud.js';
 import { firebaseConfig } from './firebase-config.js';
@@ -18,11 +19,13 @@ import './style.css';
 const views = [
   { id: 'dashboard', name: 'Dashboard', icon: LayoutGrid, subtitle: 'Your finances and plans, together in one place.' },
   { id: 'budget', name: 'Budget', icon: Wallet, subtitle: 'Track income, spending and savings for each of you.' },
-  { id: 'calendar', name: 'Calendar', icon: CalendarDays, subtitle: 'See paydays, budget entries, deposits and debt payments.' },
+  { id: 'calendar', name: 'Calendar', icon: CalendarDays, subtitle: 'See your events, budget entries, deposits and debt payments.' },
   { id: 'savings', name: 'Joint Savings', icon: PiggyBank, subtitle: 'See what each of you has put toward your shared goals.' },
   { id: 'debts', name: 'Debt Tracker', icon: Scale, subtitle: 'Track what you owe each other and record payments.' },
   { id: 'settings', name: 'Settings', icon: SettingsIcon, subtitle: 'Personalize your dashboard.' },
 ];
+
+const SIDEBAR_KEY = 'our-little-life.sidebar';
 
 function getView() {
   return views.some(view => '#' + view.id === window.location.hash) ? window.location.hash.slice(1) : 'dashboard';
@@ -53,8 +56,8 @@ function exportExcel(state, totals) {
       ...state.goals.map(goal => [goal.name, goal.target / 100, totals.goals[goal.id].long / 100, totals.goals[goal.id].mei / 100, totals.goals[goal.id].total / 100]),
       ['Manual adjustment', '', '', '', state.savingsAdjustment / 100], ['Joint balance', '', '', '', totals.jointBalance / 100],
     ] },
-    { name: 'Local events', rows: [
-      ['Title', 'Date', 'Time', 'Description'], ...state.events.map(event => [event.title, event.date, event.time, event.description]),
+    { name: 'Events', rows: [
+      ['Title', 'Date', 'Time', 'Repeats', 'Description'], ...state.events.map(event => [event.title, event.date, event.time, repeatSummary(event), event.description]),
     ] },
     { name: 'Debts', rows: [
       ['Description', 'Owed by', 'Owed to', 'Amount (USD)', 'Logged by', 'Logged at', 'Settled at'],
@@ -79,6 +82,14 @@ function App() {
   const [selectedDay, setSelectedDay] = useState(localDate);
   const [modal, setModal] = useState(null);
   const [notice, setNotice] = useState(null);
+  // The sidebar starts retracted; the choice is remembered on this device only.
+  const [expanded, setExpanded] = useState(() => { try { return localStorage.getItem(SIDEBAR_KEY) === 'open'; } catch { return false; } });
+  function toggleSidebar() {
+    setExpanded(open => {
+      try { localStorage.setItem(SIDEBAR_KEY, open ? 'closed' : 'open'); } catch { /* Not remembered; it still toggles. */ }
+      return !open;
+    });
+  }
   const totals = summarize(state, active === 'dashboard' ? localDate().slice(0, 7) : month);
   const view = views.find(item => item.id === active);
 
@@ -173,13 +184,16 @@ function App() {
   const me = PEOPLE.find(person => person.id === session.me);
   if (cloudOn && session.status !== 'ready') {
     return <div className="app-shell" style={accentStyles(state.accentColor)}>
-      <AccountGate session={session} signIn={(email, password, remember) => backend.current.signIn(email, password, remember)} signOut={signOut} chooseProfile={chooseProfile}/>
+      <AccountGate session={session} signIn={(email, password, remember) => backend.current.signIn(email, password, remember)} resetPassword={email => backend.current.resetPassword(email)} signOut={signOut} chooseProfile={chooseProfile}/>
     </div>;
   }
-  return <div className="app-shell" style={accentStyles(state.accentColor)}>
+  return <div className={expanded ? 'app-shell' : 'app-shell sidebar-collapsed'} style={accentStyles(state.accentColor)}>
     <aside className="sidebar">
+      <button className="sidebar-toggle" onClick={toggleSidebar} aria-expanded={expanded} aria-label={expanded ? 'Collapse sidebar' : 'Expand sidebar'} title={expanded ? 'Collapse sidebar' : 'Expand sidebar'}>
+        {expanded ? <ChevronLeft size={16}/> : <ChevronRight size={16}/>}
+      </button>
       <a href="#dashboard" className="brand"><span className="brand-mark"><Sprout size={21} strokeWidth={2.3}/></span><span>Our Little Life<small>Long &amp; Mei</small></span></a>
-      <nav aria-label="Main navigation">{views.map(({ id, name, icon: Icon }) => <a key={id} href={`#${id}`} aria-current={active === id ? 'page' : undefined} className={active === id ? 'active' : ''}><Icon size={19}/><span>{name}</span></a>)}</nav>
+      <nav aria-label="Main navigation">{views.map(({ id, name, icon: Icon }) => <a key={id} href={`#${id}`} title={expanded ? undefined : name} aria-current={active === id ? 'page' : undefined} className={active === id ? 'active' : ''}><Icon size={19}/><span>{name}</span></a>)}</nav>
       <div className="side-bottom">
         <div className="side-profiles"><PlantPair mini/><span>{me ? me.name : <>Long &amp; Mei</>}<small>{me ? 'Signed in' : 'Two profiles'}</small></span></div>
         <div className={cloudOn && !session.synced ? 'local-status offline' : 'local-status'}><span/> {!cloudOn ? 'Saved on this device' : session.synced ? 'Synced across your devices' : 'Offline'}</div>
@@ -199,7 +213,7 @@ function App() {
       {error && <p className="inline-alert" role="alert">Saved data could not be loaded. {error}</p>}
       {legacy && <p className="inline-alert">An earlier encrypted planner was found in this browser. Its data is separate from this dashboard.</p>}
       <div className="page-body">
-        {active === 'dashboard' && <Dashboard state={state} totals={totals} open={setModal} navigate={navigate}/>}
+        {active === 'dashboard' && <Dashboard state={state} totals={totals} me={session.me} open={setModal} navigate={navigate}/>}
         {active === 'budget' && <Budget {...{ state, totals, month, save, edit, remove }} open={setModal}/>}
         {active === 'calendar' && <CalendarView state={state} open={setModal} month={calendarMonth} setMonth={setCalendarMonth} selected={selectedDay} setSelected={setSelectedDay}/>}
         {active === 'savings' && <Savings {...{ state, totals, edit, remove }} open={setModal}/>}

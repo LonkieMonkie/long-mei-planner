@@ -1,9 +1,9 @@
-import { ArrowDownLeft, ArrowUpRight, CalendarDays, ChevronLeft, ChevronRight, Clock3, Pencil, PiggyBank, Plus, ReceiptText, Trash2, Wallet } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, CalendarDays, ChevronLeft, ChevronRight, Clock3, Pencil, PiggyBank, Plus, ReceiptText, Repeat, Trash2 } from 'lucide-react';
 import { PEOPLE, calendarDays, calendarItems, dateFromKey, displayTime, localDate, money, shiftMonth, shortDate } from './model.js';
 import { Empty, PanelHeading } from './ui.jsx';
+import { repeatSummary } from './events.js';
 
 const styles = {
-  payday: { tone: 'indigo', label: 'Payday', Icon: Wallet },
   income: { tone: 'mint', label: 'Income', Icon: ArrowDownLeft },
   expense: { tone: 'rose', label: 'Expense', Icon: ArrowUpRight },
   deposit: { tone: 'mint', label: 'Deposit', Icon: PiggyBank },
@@ -26,15 +26,15 @@ function AgendaDetails({ item, label }) {
   } else if (entry) {
     details = `${label} · ${person(entry.personId)} · ${entry.type === 'income' ? '+' : '−'}${money(entry.amount)}`;
   }
-  if (item.kind === 'payday') return <p className="event-time">Scheduled · every two weeks</p>;
   return <>
     <p className="event-time"><Clock3 size={13} aria-hidden="true"/>{time ? displayTime(time) : 'All day'}</p>
     {details && <p className="event-time">{details}</p>}
+    {event?.repeat && <p className="event-time"><Repeat size={13} aria-hidden="true"/>{repeatSummary(event)}</p>}
     {event?.description && <p className="event-description">{event.description}</p>}
   </>;
 }
 
-function AgendaItem({ item, open, selected }) {
+function AgendaItem({ item, open }) {
   const { Icon, tone, label } = styles[item.kind];
   const { entry, event } = item;
   return <article className="agenda-event calendar-agenda-item">
@@ -44,9 +44,7 @@ function AgendaItem({ item, open, selected }) {
       <AgendaDetails item={item} label={label}/>
     </div>
     {entry && <button className="icon-btn" aria-label={`Edit ${item.title} entry`} onClick={() => open({ kind: 'entry', item: entry })}><Pencil size={15}/></button>}
-    {event && <button className="icon-btn danger" aria-label={`Delete event ${item.title}`} onClick={() => open({ kind: 'delete-event', item: event })}><Trash2 size={15}/></button>}
-    {item.kind === 'payday' && <button className="icon-btn bordered" aria-label={`Log income for ${item.title}`}
-      onClick={() => open({ kind: 'entry', date: selected, person: item.personId })}><Plus size={15}/></button>}
+    {event && <button className="icon-btn danger" aria-label={`Delete event ${item.title}`} onClick={() => open({ kind: 'delete-event', item: event, date: item.date })}><Trash2 size={15}/></button>}
   </article>;
 }
 
@@ -83,7 +81,7 @@ export function CalendarView({ state, open, month, setMonth, selected, setSelect
     </section>
     <section className="card agenda-card">
       <PanelHeading title={shortDate(selected)} subtitle="Day’s agenda"/>
-      {!events.length ? <Empty icon={CalendarDays}>No activity on this day.</Empty> : events.map(item => <AgendaItem {...{ item, open, selected }} key={item.id}/>)}
+      {!events.length ? <Empty icon={CalendarDays}>No activity on this day.</Empty> : events.map(item => <AgendaItem {...{ item, open }} key={item.id}/>)}
       <div className="agenda-actions">
         <button className="btn secondary small" onClick={() => open({ kind: 'event', date: selected })}><Plus size={15}/> Add event</button>
         <button className="btn secondary small" onClick={() => open({ kind: 'entry', date: selected })}><Plus size={15}/> Add entry</button>
