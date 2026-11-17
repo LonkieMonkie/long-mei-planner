@@ -194,3 +194,27 @@ test('savings tree grows one meter per configured amount and reads saved setting
   assert.equal(skyAt(new Date(2026, 5, 21, 1)).night, 1);
   assert.ok(skyAt(new Date(2026, 5, 21, 12)).sun && !skyAt(new Date(2026, 5, 21, 1)).sun);
 });
+
+test('goal forecast projects the reach date from the last 90 days of deposits', async () => {
+  const { goalForecast } = await import('../src/forecast.js');
+  const goal = { id: 'wedding', target: 3_000_000 };
+  const deposit = (date, cents) => ({ goalId: 'wedding', date, amount: cents, rate: 10_000, type: 'expense' });
+  const today = '2026-11-17';
+  assert.deepEqual(goalForecast([], goal, 0, today), { status: 'no-data', remaining: 3_000_000 });
+  assert.equal(goalForecast([], goal, 3_000_000, today).status, 'reached');
+  // $3,000 over the last 90 days: $1,000 a month pace on $27,000 left → 810 days.
+  const steady = [deposit('2026-03-01', 100_000), deposit('2026-08-20', 100_000), deposit('2026-09-20', 100_000), deposit('2026-10-20', 100_000)];
+  const forecast = goalForecast(steady, goal, 300_000, today);
+  assert.equal(forecast.status, 'on-track');
+  assert.equal(forecast.days, 810);
+  assert.equal(forecast.date, '2029-02-04');
+  assert.equal(forecast.perMonth, 101_500);
+  assert.equal(forecast.since, null);
+  // One deposit yesterday is spread over 30 days, not 2.
+  const fresh = goalForecast([deposit('2026-11-16', 100_000)], goal, 100_000, today);
+  assert.equal(fresh.days, 870);
+  assert.equal(fresh.since, '2026-11-16');
+  assert.deepEqual(goalForecast([deposit('2026-01-05', 100_000)], goal, 100_000, today), { status: 'stalled', remaining: 2_900_000, last: '2026-01-05' });
+  assert.equal(goalForecast([deposit('2026-11-16', 1)], goal, 1, today).status, 'far');
+  assert.equal(goalForecast([deposit('2026-12-01', 100_000)], goal, 100_000, today).status, 'no-data');
+});

@@ -99,6 +99,12 @@ button.primary:hover { background: var(--accent-deep); }
 .goal-numbers strong { @apply break-all text-[23px] font-bold tracking-tight tabular-nums; }
 .goal-numbers span, .goal-caption { @apply text-[11px] text-muted; }
 .goal-caption { @apply mt-2.5 flex justify-between gap-2; }
+.goal-forecast { display: flex; gap: 8px; align-items: flex-start; margin-top: 12px; padding: 10px 12px; border-radius: 14px; background: var(--color-paper); font-size: 12px; line-height: 1.45; }
+.goal-forecast svg { flex-shrink: 0; margin-top: 1px; color: var(--color-accent); }
+.goal-forecast strong { color: var(--accent-deep); }
+.goal-forecast small { display: block; margin-top: 2px; font-size: 11px; color: var(--color-muted); }
+.goal-forecast.reached { background: #e4f5ec; color: #1f6b4c; }
+.goal-forecast.reached svg { color: #1f6b4c; }
 .couple-note { @apply mt-4 flex items-center gap-2 text-[11px] text-muted; }
 .empty-state { @apply grid min-h-[105px] place-content-center justify-items-center gap-2 py-3 text-center text-xs text-muted; }
 .upcoming { @apply flex items-center gap-3 border-t border-line py-3 text-sm; }

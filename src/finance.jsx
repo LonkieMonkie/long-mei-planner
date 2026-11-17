@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { ArrowDownLeft, ArrowDownRight, ArrowRight, CalendarDays, ChevronLeft, ChevronRight, CircleDollarSign, Landmark, LockKeyhole, Pencil, PiggyBank, Plus, SlidersHorizontal, Target, Wallet } from 'lucide-react';
+import { ArrowDownLeft, ArrowDownRight, ArrowRight, CalendarDays, ChevronLeft, ChevronRight, CircleDollarSign, Landmark, LockKeyhole, Pencil, PiggyBank, Plus, SlidersHorizontal, Target, TrendingUp, Wallet } from 'lucide-react';
 import { upcomingEvents } from './events.js';
+import { goalForecast } from './forecast.js';
 import { PEOPLE, WEDDING_CATEGORY_ID, categoryColor, dateFromKey, displayTime, isWeddingName, localDate, money, shiftMonth, shortDate } from './model.js';
 import { PlantPair } from './plants.jsx';
 import { SavingsTree } from './tree.jsx';
@@ -37,12 +38,35 @@ function CategorySummary({ state, totals, navigate }) {
   </section>;
 }
 
-function GoalProgress({ goal, totals }) {
+const basisNote = forecast => 'Based on your deposits ' + (forecast.since ? 'since ' + shortDate(forecast.since) : 'in the last 90 days') + '.';
+
+function GoalForecast({ goal, entries, total }) {
+  const forecast = goalForecast(entries, goal, total, localDate());
+  const target = money(goal.target, true);
+  let line, note;
+  switch (forecast.status) {
+    case 'reached': line = `You’ve reached your ${target} goal.`; break;
+    case 'no-data': line = `Add a deposit to see when you’ll reach ${target}.`; break;
+    case 'stalled': line = 'No deposits in the last 90 days, so there’s no current pace to forecast from.'; note = 'Last deposit ' + shortDate(forecast.last) + '.'; break;
+    case 'far': line = `At about ${money(forecast.perMonth, true)} a month, reaching ${target} would take more than 50 years.`; note = basisNote(forecast); break;
+    default: {
+      const when = forecast.days > 60
+        ? dateFromKey(forecast.date).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+        : shortDate(forecast.date);
+      line = <>At about {money(forecast.perMonth, true)} a month, you’ll reach {target} around <strong>{when}</strong>.</>;
+      note = basisNote(forecast);
+    }
+  }
+  return <div className={`goal-forecast ${forecast.status}`}><TrendingUp size={16} aria-hidden="true"/><p>{line}{note && <small>{note}</small>}</p></div>;
+}
+
+function GoalProgress({ goal, totals, entries }) {
   const pct = goal.target ? Math.round(totals.total / goal.target * 100) : 0;
   return <>
     <div className="goal-numbers"><strong>{money(totals.total)}</strong><span>{money(goal.target, true)} goal</span></div>
     <Progress value={totals.total} max={goal.target} label={goal.name + ' progress'}/>
     <div className="goal-caption"><span>{pct}% funded</span><span>{money(Math.max(0, goal.target - totals.total), true)} to go</span></div>
+    <GoalForecast goal={goal} entries={entries} total={totals.total}/>
   </>;
 }
 
@@ -64,7 +88,7 @@ export function Dashboard({ state, totals, me, open, navigate }) {
       <CategorySummary state={state} totals={totals} navigate={navigate}/>
       <section className="card goal-preview">
         <PanelHeading title="Joint goals" subtitle="Track the goals you share" action={<button className="text-link" onClick={() => navigate('savings')}>View goals <ArrowRight size={14}/></button>}/>
-        {goal && <div className="goal-preview-inner"><div className="goal-title"><span className="icon-tile indigo"><Target size={20}/></span><h3>{goal.name}</h3></div><GoalProgress goal={goal} totals={totals.goals[goal.id]}/></div>}
+        {goal && <div className="goal-preview-inner"><div className="goal-title"><span className="icon-tile indigo"><Target size={20}/></span><h3>{goal.name}</h3></div><GoalProgress goal={goal} totals={totals.goals[goal.id]} entries={state.entries}/></div>}
         <div className="couple-note"><PlantPair mini/><span>Two separate budgets, one shared goal.</span></div>
       </section>
     </div>
@@ -156,7 +180,7 @@ export function Savings({ state, totals, open, edit, remove }) {
       </div>}/>
       <div className="goals-grid">{state.goals.map(goal => <article className="goal-item" key={goal.id}>
         <div className="goal-title"><span className="icon-tile indigo"><Target size={19}/></span><h3>{goal.name}</h3><button className="icon-btn" aria-label={`Edit goal ${goal.name}`} onClick={() => open({ kind: 'goal', item: goal })}><Pencil size={14}/></button></div>
-        <GoalProgress goal={goal} totals={totals.goals[goal.id]}/>
+        <GoalProgress goal={goal} totals={totals.goals[goal.id]} entries={state.entries}/>
         <div className="goal-people">{PEOPLE.map(person => <span key={person.id}><Person id={person.id}/><b>{money(totals.goals[goal.id][person.id])}</b></span>)}</div>
       </article>)}</div>
     </section>
