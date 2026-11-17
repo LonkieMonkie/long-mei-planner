@@ -1,16 +1,17 @@
 import { useState } from 'react';
 import { ArrowDownLeft, ArrowUpRight, PiggyBank } from 'lucide-react';
-import { PEOPLE, contribution, debtFromFields, decimalUnits, entryContribution, entryFromFields, isDateKey, localDate, money, savingsRule, setJointBalance, settleDebt } from './model.js';
+import { PEOPLE, WEDDING_CATEGORY_ID, contribution, debtFromFields, decimalUnits, entryContribution, entryFromFields, entryTime, isDateKey, localDate, localTime, money, savingsRule, setJointBalance, settleDebt } from './model.js';
 import { ActionForm, Modal } from './ui.jsx';
 import { CategoryForm } from './category-form.jsx';
 
-function EntryForm({ state, item, date, person, close, save }) {
-  const [type, setType] = useState(item?.type ?? 'income');
+function EntryForm({ state, item, date, person, weddingDeposit = false, close, save }) {
+  const [type, setType] = useState(weddingDeposit ? 'expense' : item?.type ?? 'income');
   const [amount, setAmount] = useState(item ? String(item.amount / 100) : '');
-  const [categoryId, setCategoryId] = useState(item?.categoryId ?? '');
+  const [categoryId, setCategoryId] = useState(weddingDeposit ? WEDDING_CATEGORY_ID : item?.categoryId ?? '');
   const [personId, setPersonId] = useState(item?.personId ?? person ?? 'long');
   const category = state.categories.find(item => item.id === categoryId);
   const { rate, goalId } = savingsRule(category, personId, state.goals, item);
+  const [initialTime] = useState(() => item ? entryTime(item) : localTime());
   let projected = 0;
   try { projected = contribution(decimalUnits(amount || '0'), rate); } catch { /* Invalid amounts are reported on submit. */ }
   function submit(fields) {
@@ -23,17 +24,19 @@ function EntryForm({ state, item, date, person, close, save }) {
     }, item ? 'Entry updated' : 'Entry saved');
     close();
   }
-  return <ActionForm onSave={submit} cancel={close} label={item ? 'Save changes' : 'Save entry'}>
-    <div className="segmented" aria-label="Entry type">
+  return <ActionForm onSave={submit} cancel={close} label={item ? 'Save changes' : weddingDeposit ? 'Save deposit' : 'Save entry'}>
+    {!weddingDeposit && <div className="segmented" aria-label="Entry type">
       <button type="button" aria-pressed={type === 'income'} onClick={() => setType('income')}><ArrowDownLeft size={16}/> Income</button>
       <button type="button" aria-pressed={type === 'expense'} onClick={() => setType('expense')}><ArrowUpRight size={16}/> Expense</button>
-    </div>
+    </div>}
     <input type="hidden" name="type" value={type}/>
+    {weddingDeposit && <p className="field-help">This will log a Wedding budget entry and add the amount shown below to Joint Savings.</p>}
+    <label>Who is adding this?<select name="personId" value={personId} onChange={e => setPersonId(e.target.value)}>{PEOPLE.map(person => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label>
     <div className="form-row">
-      <label>Who is adding this?<select name="personId" value={personId} onChange={e => setPersonId(e.target.value)}>{PEOPLE.map(person => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label>
       <label>Transaction date<input name="date" type="date" defaultValue={item?.date ?? date ?? localDate()} required/></label>
+      <label>Transaction time<input name="time" type="time" defaultValue={initialTime} required/></label>
     </div>
-    {type === 'income'
+    {weddingDeposit ? <input type="hidden" name="categoryId" value={WEDDING_CATEGORY_ID}/> : type === 'income'
       ? <label key="income">Income source<input name="source" defaultValue={item?.type === 'income' ? item.source : ''} placeholder="e.g. Paycheck" maxLength={100} required/></label>
       : <label key="expense">Budget category<select name="categoryId" value={categoryId} onChange={e => setCategoryId(e.target.value)} required><option value="" disabled>Select category</option>{state.categories.map(category => <option value={category.id} key={category.id}>{category.name}</option>)}</select></label>}
     <label>Amount ($)<input name="amount" type="number" step="0.01" min="0.01" max="1000000000" placeholder="0.00" value={amount} onChange={e => setAmount(e.target.value)} required/></label>
@@ -55,6 +58,7 @@ export function Dialogs({ modal, state, totals, close, save, onEventSaved }) {
   const { kind, item } = modal;
   const titles = {
     entry: item ? 'Edit entry' : 'Add an entry',
+    'wedding-deposit': 'Add Wedding deposit',
     category: item ? item.name + ' settings' : 'Add a budget category', limit: 'Edit budget limit',
     balance: 'Edit joint balance', goal: item ? 'Edit savings goal' : 'Add a savings goal',
     event: 'Add local event', 'delete-event': 'Delete event?', 'delete-entry': 'Delete entry?',
@@ -64,7 +68,8 @@ export function Dialogs({ modal, state, totals, close, save, onEventSaved }) {
   let content;
   switch (kind) {
     case 'entry':
-      content = <EntryForm {...{ state, item, close, save }} date={modal.date} person={modal.person}/>;
+    case 'wedding-deposit':
+      content = <EntryForm {...{ state, item, close, save }} date={modal.date} person={modal.person} weddingDeposit={kind === 'wedding-deposit'}/>;
       break;
     case 'category':
       content = <CategoryForm {...{ item, state, done, close }}/>;
@@ -107,7 +112,7 @@ export function Dialogs({ modal, state, totals, close, save, onEventSaved }) {
     case 'settle-debt':
       content = <ActionForm cancel={close} label="Confirm payment" onSave={() => {
         done(current => settleDebt(current, item.id), 'Payment recorded');
-      }}><p className="field-help">Mark {money(item.amount)} for “{item.description}” as paid in full? This records the payment and removes the debt from the active balance.</p></ActionForm>;
+      }}><p className="field-help">Mark {money(item.amount)} for “{item.description}” as paid in full? The calendar records the date and time you confirm.</p></ActionForm>;
       break;
     case 'delete-entry':
     case 'delete-event': {

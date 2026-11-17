@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { STORAGE_KEY, contribution, entryFromFields, freshData, readState, setJointBalance, summarize,
+import { STORAGE_KEY, WEDDING_CATEGORY_ID, contribution, entryFromFields, freshData, localDate, localTime, readState, setJointBalance, summarize,
   calendarDays, calendarItems, isPayday, debtFromFields, debtBalances, settleDebt } from '../src/model.js';
 
 const fields = (overrides = {}) => ({
@@ -33,7 +33,7 @@ test('edits and deletes recalculate only the affected contribution, including af
 test('expense edit and deletion move spending with a stable category ID', () => {
   const state = freshData();
   const expense = entryFromFields(fields({ type: 'expense', categoryId: 'transport', amount: '15.99' }), state);
-  state.categories[1].name = 'Gas';
+  state.categories.find(category => category.id === 'transport').name = 'Gas';
   state.entries = [expense];
   assert.equal(expense.source, 'Transportation');
   assert.equal(summarize(state, '2026-11').spentByCategory.get('transport'), 1599);
@@ -110,4 +110,49 @@ test('settling one debt preserves both ledger records and updates the net in cen
   assert.throws(() => settleDebt(settled, debt.id));
   assert.throws(() => debtFromFields({ debtorId: 'long', creditorId: 'long', addedBy: 'long', amount: '10', description: 'Dinner' }));
   assert.deepEqual(readState({ getItem: () => JSON.stringify(settled) }).debts, settled.debts);
+});
+
+test('Wedding applies each person’s rate to the joint balance and places one timed deposit on the calendar', () => {
+  const state = freshData();
+  const wedding = state.categories.find(category => category.id === WEDDING_CATEGORY_ID);
+  const input = fields({ categoryId: wedding.id, amount: '50', time: '14:35' });
+  const full = entryFromFields(input, state);
+  assert.equal(full.rate, 10_000);
+  wedding.savingsRates.mei = 6000;
+  const partial = entryFromFields({ ...input, personId: 'mei', time: '15:30' }, state);
+  state.entries = [full, partial];
+  assert.equal(summarize(state, '2026-11').spentByCategory.get(wedding.id), 10_000);
+  assert.equal(summarize(state).jointBalance, 8000);
+  const events = calendarItems(state, [input.date]).get(input.date);
+  assert.deepEqual(events.filter(item => item.kind !== 'payday').map(item => [item.title, item.amount, item.time]),
+    [['Wedding deposit', 5000, '14:35'], ['Wedding deposit', 3000, '15:30']]);
+});
+
+test('an existing Wedding category keeps its rates and linked entry history when made permanent', () => {
+  const state = freshData();
+  state.categories = state.categories.filter(category => category.id !== WEDDING_CATEGORY_ID);
+  const category = { id: 'old-wedding', name: ' wedding ', limit: 50_000, savingsRates: { long: 3000, mei: 0 } };
+  state.categories.push(category);
+  state.entries.push(entryFromFields(fields({ categoryId: category.id, amount: '100' }), state));
+  const restored = readState({ getItem: () => JSON.stringify(state) });
+  const wedding = restored.categories.find(category => category.id === WEDDING_CATEGORY_ID);
+  assert.equal(wedding.name, 'Wedding');
+  assert.equal(wedding.limit, 50_000);
+  assert.deepEqual(wedding.savingsRates, { long: 3000, mei: 0 });
+  assert.equal(restored.entries[0].categoryId, WEDDING_CATEGORY_ID);
+  assert.equal(summarize(restored).jointBalance, summarize(state).jointBalance);
+});
+
+test('a calendar debt payment uses the settlement date and time, including across UTC midnight', () => {
+  const state = freshData();
+  state.debts.push(debtFromFields({ debtorId: 'long', creditorId: 'mei', addedBy: 'long', amount: '45', description: 'Dinner' },
+    '2026-11-24T04:30:00Z'));
+  const paidAt = '2026-11-25T04:35:00Z';
+  const date = localDate(new Date(paidAt));
+  assert.equal(calendarItems(state, [date]).get(date).length, 0);
+  const updated = settleDebt(state, state.debts[0].id, paidAt);
+  const [payment] = calendarItems(updated, [date]).get(date);
+  assert.equal(payment.kind, 'payment');
+  assert.equal(payment.time, localTime(new Date(paidAt)));
+  assert.equal(payment.debt.amount, 4500);
 });

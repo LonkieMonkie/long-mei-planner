@@ -7,6 +7,14 @@ export const PEOPLE = [
   { id: 'mei', name: 'Mei', initials: 'M', tone: 'rose' },
 ];
 export const FIRST_PAYDAYS = { long: '2026-11-27', mei: '2026-12-04' };
+export const WEDDING_CATEGORY_ID = 'wedding';
+const WEDDING_GOAL_ID = 'wedding';
+
+const weddingCategory = {
+  id: WEDDING_CATEGORY_ID, name: 'Wedding', limit: 0, icon: 'heart', tone: 'rose',
+  savingsRates: { long: 10_000, mei: 10_000 }, savingsGoalId: WEDDING_GOAL_ID,
+};
+const weddingGoal = { id: WEDDING_GOAL_ID, name: 'Wedding', target: 3_000_000 };
 
 export const money = (cents, compact = false) =>
   new Intl.NumberFormat('en-US', {
@@ -28,6 +36,12 @@ export const shortDate = key => dateFromKey(key).toLocaleDateString('en-US', {
 export const timestamp = iso => new Date(iso).toLocaleString('en-US', {
   month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit',
 });
+export const localTime = (date = new Date()) =>
+  [date.getHours(), date.getMinutes()].map(part => String(part).padStart(2, '0')).join(':');
+export const displayTime = time => new Date('2000-01-01T' + time).toLocaleTimeString('en-US', {
+  hour: 'numeric', minute: '2-digit',
+});
+export const entryTime = entry => entry.time ?? localTime(new Date(entry.createdAt));
 
 export function decimalUnits(value, max = 100_000_000_000, signed = false) {
   const string = String(value).trim();
@@ -43,17 +57,19 @@ export const contribution = (amount, rate) => Math.floor((amount * rate + 5_000)
 export const entryContribution = entry => entry.goalId ? contribution(entry.amount, entry.rate ?? 0) : 0;
 export const categoryColors = { indigo: '#7964da', blue: '#5283c7', rose: '#bc5f88', mint: '#3c9676' };
 export const categoryColor = category => parseAccent(category.color) ?? categoryColors[category.tone] ?? DEFAULT_ACCENT;
+export const isWeddingName = name => name.trim().toLowerCase() === 'wedding';
 
 export function freshData() {
   return {
     version: 2,
     categories: [
+      { ...weddingCategory, savingsRates: { ...weddingCategory.savingsRates } },
       { id: 'essentials', name: 'Essentials', limit: 0, icon: 'basket', tone: 'indigo' },
       { id: 'transport', name: 'Transportation', limit: 0, icon: 'car', tone: 'blue' },
       { id: 'dining', name: 'Dining out', limit: 0, icon: 'utensils', tone: 'rose' },
       { id: 'bills', name: 'Bills & subscriptions', limit: 0, icon: 'receipt', tone: 'mint' },
     ],
-    goals: [{ id: 'wedding', name: 'Wedding', target: 3_000_000 }],
+    goals: [{ ...weddingGoal }],
     entries: [], events: [], debts: [], firstPaydays: { ...FIRST_PAYDAYS },
     savingsAdjustment: 0, accentColor: DEFAULT_ACCENT,
   };
@@ -65,7 +81,7 @@ export function savingsRule(category, personId, goals, previous) {
     return { rate: previous.rate ?? 0, goalId: previous.goalId ?? '' };
   }
   const rate = category.savingsRates?.[personId] ?? 0;
-  const goalId = category.savingsGoalId || goals[0]?.id;
+  const goalId = category.id === WEDDING_CATEGORY_ID ? WEDDING_GOAL_ID : category.savingsGoalId || goals[0]?.id;
   return rate > 0 && goals.some(goal => goal.id === goalId) ? { rate, goalId } : { rate: 0, goalId: '' };
 }
 
@@ -78,11 +94,13 @@ export function entryFromFields(fields, state, previous, now = new Date().toISOS
   const amount = decimalUnits(fields.amount);
   if (amount <= 0) throw new Error('Enter an amount greater than zero.');
   if (!isDateKey(fields.date)) throw new Error('Choose a valid transaction date.');
+  const time = fields.time || (previous ? entryTime(previous) : localTime(new Date(now)));
+  if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time)) throw new Error('Choose a valid transaction time.');
   const allocation = type === 'expense' ? savingsRule(category, person.id, state.goals, previous) : {};
   return {
     id: previous?.id ?? crypto.randomUUID(),
     personId: person.id, type, categoryId: type === 'expense' ? category.id : '',
-    source, date: fields.date, amount, ...allocation,
+    source, date: fields.date, time, amount, ...allocation,
     createdAt: previous?.createdAt ?? now, editedAt: previous ? now : null,
   };
 }
@@ -146,13 +164,29 @@ export function calendarItems(state, dates) {
     const items = byDate.get(entry.date);
     if (!items) continue;
     const category = categories.get(entry.categoryId);
-    items.push({ id: 'entry:' + entry.id, kind: entry.type, title: category?.name ?? entry.source,
-      color: category && categoryColor(category), entry });
+    const deposited = entryContribution(entry);
+    const time = entryTime(entry);
+    const weddingDeposit = entry.categoryId === WEDDING_CATEGORY_ID && deposited > 0;
+    if (!weddingDeposit) {
+      items.push({ id: 'entry:' + entry.id, kind: entry.type, title: category?.name ?? entry.source,
+        color: category && categoryColor(category), entry, time });
+    }
+    if (deposited > 0) {
+      items.push({ id: 'deposit:' + entry.id, kind: 'deposit', title: weddingDeposit ? 'Wedding deposit' : 'Joint deposit',
+        color: weddingDeposit ? categoryColor(category ?? weddingCategory) : undefined,
+        entry, time, amount: deposited, goal: state.goals.find(goal => goal.id === entry.goalId)?.name });
+    }
   }
-  const events = [...state.events].sort((a, b) => a.time.localeCompare(b.time));
-  for (const event of events) {
-    byDate.get(event.date)?.push({ id: 'event:' + event.id, kind: 'event', title: event.title, event });
+  for (const debt of state.debts) {
+    if (!debt.settledAt) continue;
+    const paidAt = new Date(debt.settledAt);
+    byDate.get(localDate(paidAt))?.push({ id: 'payment:' + debt.id, kind: 'payment',
+      title: 'Debt paid: ' + debt.description, debt, time: localTime(paidAt) });
   }
+  for (const event of state.events) {
+    byDate.get(event.date)?.push({ id: 'event:' + event.id, kind: 'event', title: event.title, time: event.time, event });
+  }
+  for (const items of byDate.values()) items.sort((a, b) => (a.time ?? '').localeCompare(b.time ?? ''));
   return byDate;
 }
 
@@ -209,6 +243,17 @@ export function readState(storage) {
   }
   delete state.googleUrl;
   state.debts ??= [];
+  const category = state.categories.find(item => item.id === WEDDING_CATEGORY_ID)
+    ?? state.categories.find(item => isWeddingName(item.name));
+  const wedding = {
+    ...weddingCategory, ...category, id: WEDDING_CATEGORY_ID, name: weddingCategory.name, savingsGoalId: WEDDING_GOAL_ID,
+    savingsRates: { ...weddingCategory.savingsRates, ...category?.savingsRates },
+  };
+  state.categories = [wedding, ...state.categories.filter(item => item !== category)];
+  if (category && category.id !== WEDDING_CATEGORY_ID) {
+    state.entries = state.entries.map(entry => entry.categoryId === category.id ? { ...entry, categoryId: WEDDING_CATEGORY_ID } : entry);
+  }
+  if (!state.goals.some(goal => goal.id === WEDDING_GOAL_ID)) state.goals.unshift({ ...weddingGoal });
   state.firstPaydays = Object.fromEntries(PEOPLE.map(({ id }) => {
     const date = state.firstPaydays?.[id];
     return [id, isDateKey(date) && dateFromKey(date).getDay() === 5 ? date : FIRST_PAYDAYS[id]];

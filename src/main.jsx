@@ -8,14 +8,14 @@ import { Dialogs } from './dialogs.jsx';
 import { Settings } from './settings.jsx';
 import { accentStyles } from './appearance.js';
 import { Person } from './ui.jsx';
-import { LEGACY_KEY, PEOPLE, STORAGE_KEY, categoryColor, entryContribution, freshData, localDate, readState, summarize } from './model.js';
+import { LEGACY_KEY, PEOPLE, STORAGE_KEY, categoryColor, entryContribution, entryTime, freshData, localDate, readState, summarize } from './model.js';
 import { workbook } from './excel.js';
 import './style.css';
 
 const views = [
   { id: 'dashboard', name: 'Dashboard', icon: LayoutGrid, subtitle: 'Your finances and plans, together in one place.' },
   { id: 'budget', name: 'Budget', icon: Wallet, subtitle: 'Track income, spending and savings for each of you.' },
-  { id: 'calendar', name: 'Calendar', icon: CalendarDays, subtitle: 'See upcoming paydays, income, expenses and events.' },
+  { id: 'calendar', name: 'Calendar', icon: CalendarDays, subtitle: 'See paydays, budget entries, deposits and debt payments.' },
   { id: 'savings', name: 'Joint Savings', icon: PiggyBank, subtitle: 'See what each of you has put toward your shared goals.' },
   { id: 'debts', name: 'Debt Tracker', icon: Scale, subtitle: 'Track what you owe each other and record payments.' },
   { id: 'settings', name: 'Settings', icon: SettingsIcon, subtitle: 'Personalize your dashboard.' },
@@ -38,8 +38,8 @@ function exportExcel(state, totals) {
   const goals = new Map(state.goals.map(g => [g.id, g.name]));
   const blob = workbook([
     { name: 'Entry history', rows: [
-      ['Profile', 'Transaction date', 'Type', 'Source', 'Amount (USD)', 'Joint goal', 'Savings %', 'Contribution (USD)', 'Logged at', 'Last edited at'],
-      ...state.entries.map(entry => [names.get(entry.personId), entry.date, entry.type, entry.source, entry.amount / 100, goals.get(entry.goalId) ?? '', entry.rate === undefined ? '' : entry.rate / 100, entryContribution(entry) / 100, entry.createdAt, entry.editedAt ?? '']),
+      ['Profile', 'Transaction date', 'Transaction time', 'Type', 'Source', 'Amount (USD)', 'Joint goal', 'Savings %', 'Contribution (USD)', 'Logged at', 'Last edited at'],
+      ...state.entries.map(entry => [names.get(entry.personId), entry.date, entryTime(entry), entry.type, entry.source, entry.amount / 100, goals.get(entry.goalId) ?? '', entry.rate === undefined ? '' : entry.rate / 100, entryContribution(entry) / 100, entry.createdAt, entry.editedAt ?? '']),
     ] },
     { name: 'Budget categories', rows: [
       ['Category', 'Monthly limit (USD)', 'Color', 'Long savings %', 'Mei savings %', 'Joint goal'],

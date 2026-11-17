@@ -118,6 +118,7 @@ button.primary:hover { background: var(--accent-deep); }
 .category-row { @apply grid items-center gap-3 border-t border-line py-3; grid-template-columns: auto minmax(110px, 1fr) minmax(75px, 1fr) minmax(100px, auto) auto; }
 .category-figures { @apply text-right text-sm whitespace-nowrap tabular-nums; }.category-figures span { @apply text-xs text-muted; }
 .rename { @apply inline-flex max-w-full items-center gap-2 break-words text-left text-sm font-semibold; }.rename svg { @apply shrink-0 text-muted; }.rename:hover { @apply text-accent; }
+.category-name > span.rename:hover { color: inherit; }
 .inline-name input { @apply w-full px-2 py-1.5; }
 .category-actions { @apply flex flex-wrap items-center justify-end gap-1; }
 .category-rates { @apply mt-1 flex flex-wrap gap-x-2 text-[11px] text-muted; }

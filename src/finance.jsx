@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { ArrowDownLeft, ArrowDownRight, ArrowRight, CalendarDays, ChevronLeft, ChevronRight, CircleDollarSign, Heart, Landmark, Pencil, PiggyBank, Plus, SlidersHorizontal, Target, Wallet } from 'lucide-react';
-import { PEOPLE, categoryColor, dateFromKey, localDate, money, shiftMonth, shortDate } from './model.js';
+import { ArrowDownLeft, ArrowDownRight, ArrowRight, CalendarDays, ChevronLeft, ChevronRight, CircleDollarSign, Heart, Landmark, LockKeyhole, Pencil, PiggyBank, Plus, SlidersHorizontal, Target, Wallet } from 'lucide-react';
+import { PEOPLE, WEDDING_CATEGORY_ID, categoryColor, dateFromKey, isWeddingName, localDate, money, shiftMonth, shortDate } from './model.js';
 import { CATEGORY_ICONS, Empty, EntryHistory, InlineName, PanelHeading, Person, Progress } from './ui.jsx';
 
 export function MonthSelector({ month, setMonth }) {
@@ -92,10 +92,15 @@ export function Budget({ state, totals, month, save, open, edit, remove }) {
       <div className="category-table">
         {state.categories.map(category => {
           const spent = totals.spentByCategory.get(category.id) ?? 0;
+          const wedding = category.id === WEDDING_CATEGORY_ID;
           return <div className="category-row" key={category.id}>
             <CategoryIcon category={category} size={18}/>
             <div className="category-name">
-              <InlineName name={category.name} save={name => save(current => ({ ...current, categories: current.categories.map(item => item.id === category.id ? { ...item, name } : item) }), 'Category renamed')}/>
+              {wedding ? <span className="rename"><strong>Wedding</strong><LockKeyhole size={13} aria-label="Permanent category"/></span>
+                : <InlineName name={category.name} save={name => {
+                  if (isWeddingName(name)) throw new Error('Wedding is already a permanent category.');
+                  save(current => ({ ...current, categories: current.categories.map(item => item.id === category.id ? { ...item, name } : item) }), 'Category renamed');
+                }}/>}
               <div className="category-rates">{PEOPLE.map(person => <span key={person.id}>{person.name} {(category.savingsRates?.[person.id] ?? 0) / 100}%</span>)}</div>
             </div>
             <div className="category-meter"><Progress value={spent} max={category.limit} color={spent <= category.limit ? categoryColor(category) : undefined} tone="rose" label={category.name + ' spent'}/></div>
@@ -140,7 +145,10 @@ export function Savings({ state, totals, open, edit, remove }) {
       </section>
     </div>
     <section className="card">
-      <PanelHeading title="Savings goals" subtitle="Each goal adds up the contributions assigned to it." action={<button className="btn secondary" onClick={() => open({ kind: 'goal' })}><Plus size={17}/> Add goal</button>}/>
+      <PanelHeading title="Savings goals" subtitle="Each goal adds up the contributions assigned to it." action={<div className="flex flex-wrap gap-2">
+        <button className="btn secondary" onClick={() => open({ kind: 'goal' })}><Plus size={17}/> Add goal</button>
+        <button className="btn primary" onClick={() => open({ kind: 'wedding-deposit' })}><Plus size={17}/> Add Wedding deposit</button>
+      </div>}/>
       <div className="goals-grid">{state.goals.map(goal => <article className="goal-item" key={goal.id}>
         <div className="goal-title"><span className="icon-tile indigo"><Target size={19}/></span><h3>{goal.name}</h3><button className="icon-btn" aria-label={`Edit goal ${goal.name}`} onClick={() => open({ kind: 'goal', item: goal })}><Pencil size={14}/></button></div>
         <GoalProgress goal={goal} totals={totals.goals[goal.id]}/>

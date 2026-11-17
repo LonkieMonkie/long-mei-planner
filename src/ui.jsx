@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowDownLeft, ArrowUpRight, Car, Pencil, Receipt, ShoppingBasket, Tag, Trash2, Utensils, X } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, Car, Heart, Pencil, Receipt, ShoppingBasket, Tag, Trash2, Utensils, X } from 'lucide-react';
 import { PEOPLE, categoryColor, entryContribution, money, shortDate, timestamp } from './model.js';
 
-export const CATEGORY_ICONS = { basket: ShoppingBasket, car: Car, utensils: Utensils, receipt: Receipt, tag: Tag };
+export const CATEGORY_ICONS = { basket: ShoppingBasket, car: Car, heart: Heart, utensils: Utensils, receipt: Receipt, tag: Tag };
 
 export function Person({ id, onlyAvatar = false }) {
   const person = PEOPLE.find(p => p.id === id);

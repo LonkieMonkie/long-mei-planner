@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { DEFAULT_ACCENT, parseAccent } from './appearance.js';
-import { PEOPLE, categoryColor, decimalUnits } from './model.js';
+import { PEOPLE, WEDDING_CATEGORY_ID, categoryColor, decimalUnits, isWeddingName } from './model.js';
 import { ActionForm } from './ui.jsx';
 
 function toHsv(hex) {
@@ -77,13 +77,15 @@ function CategoryColorPicker({ initial }) {
 }
 
 export function CategoryForm({ item, state, done, close }) {
+  const wedding = item?.id === WEDDING_CATEGORY_ID;
   return <ActionForm cancel={close} label={item ? 'Save category' : 'Add category'} onSave={fields => {
     const color = parseAccent(fields.color);
     if (!color) throw new Error('Enter a six-digit hex color.');
     const name = fields.name?.trim();
     if (!item && !name) throw new Error('Enter a category name.');
+    if (!item && isWeddingName(name)) throw new Error('Wedding is already a permanent category.');
     const savingsRates = Object.fromEntries(PEOPLE.map(({ id }) => [id, decimalUnits(fields[id] || '0', 10_000)]));
-    const update = { color, savingsRates, savingsGoalId: fields.savingsGoalId };
+    const update = { color, savingsRates, savingsGoalId: wedding ? item.savingsGoalId : fields.savingsGoalId };
     done(current => ({
       ...current,
       categories: item
@@ -96,9 +98,9 @@ export function CategoryForm({ item, state, done, close }) {
     <div className="form-row">{PEOPLE.map(person => <label key={person.id}>{person.name} savings (%)
       <input type="number" name={person.id} min="0" max="100" step="0.01" defaultValue={(item?.savingsRates?.[person.id] ?? 0) / 100}/>
     </label>)}</div>
-    <label>Joint savings goal<select name="savingsGoalId" defaultValue={item?.savingsGoalId || state.goals[0]?.id}>
+    {wedding ? <p className="field-help">Wedding is permanent and adds to the Wedding goal in Joint Savings.</p> : <label>Joint savings goal<select name="savingsGoalId" defaultValue={item?.savingsGoalId || state.goals[0]?.id}>
       {state.goals.map(goal => <option key={goal.id} value={goal.id}>{goal.name}</option>)}
-    </select></label>
-    <p className="field-help">These rates apply to new expenses in this category. Entries already saved keep the rate they were logged with.</p>
+    </select></label>}
+    <p className="field-help">These rates apply to new entries in this category. Saved entries keep their recorded rate.</p>
   </ActionForm>;
 }

@@ -1,11 +1,13 @@
-import { ArrowDownLeft, ArrowUpRight, CalendarDays, ChevronLeft, ChevronRight, Clock3, Pencil, Plus, Trash2, Wallet } from 'lucide-react';
-import { PEOPLE, calendarDays, calendarItems, dateFromKey, localDate, money, shiftMonth, shortDate } from './model.js';
+import { ArrowDownLeft, ArrowUpRight, CalendarDays, ChevronLeft, ChevronRight, Clock3, Pencil, PiggyBank, Plus, ReceiptText, Trash2, Wallet } from 'lucide-react';
+import { PEOPLE, calendarDays, calendarItems, dateFromKey, displayTime, localDate, money, shiftMonth, shortDate } from './model.js';
 import { Empty, PanelHeading } from './ui.jsx';
 
 const styles = {
   payday: { tone: 'indigo', label: 'Payday', Icon: Wallet },
   income: { tone: 'mint', label: 'Income', Icon: ArrowDownLeft },
   expense: { tone: 'rose', label: 'Expense', Icon: ArrowUpRight },
+  deposit: { tone: 'mint', label: 'Deposit', Icon: PiggyBank },
+  payment: { tone: 'blue', label: 'Debt payment', Icon: ReceiptText },
   event: { tone: 'blue', label: 'Event', Icon: CalendarDays },
 };
 
@@ -13,23 +15,38 @@ function itemStyle(item) {
   if (item.color) return { '--category-color': item.color };
 }
 
+function AgendaDetails({ item, label }) {
+  const { entry, debt, event, time } = item;
+  const person = id => PEOPLE.find(person => person.id === id)?.name;
+  let details;
+  if (item.kind === 'deposit') {
+    details = [person(entry.personId), '+' + money(item.amount), item.goal].filter(Boolean).join(' · ');
+  } else if (debt) {
+    details = `${person(debt.debtorId)} paid ${person(debt.creditorId)} · ${money(debt.amount)}`;
+  } else if (entry) {
+    details = `${label} · ${person(entry.personId)} · ${entry.type === 'income' ? '+' : '−'}${money(entry.amount)}`;
+  }
+  if (item.kind === 'payday') return <p className="event-time">Scheduled · every two weeks</p>;
+  return <>
+    <p className="event-time"><Clock3 size={13} aria-hidden="true"/>{time ? displayTime(time) : 'All day'}</p>
+    {details && <p className="event-time">{details}</p>}
+    {event?.description && <p className="event-description">{event.description}</p>}
+  </>;
+}
+
 function AgendaItem({ item, open, selected }) {
   const { Icon, tone, label } = styles[item.kind];
   const { entry, event } = item;
-  const person = PEOPLE.find(person => person.id === entry?.personId);
   return <article className="agenda-event calendar-agenda-item">
     <span className={`icon-tile ${tone} ${item.color ? 'category-icon' : ''}`} style={itemStyle(item)}><Icon size={16}/></span>
     <div>
       <h3>{item.title}</h3>
-      {entry ? <p className="event-time">{label} · {person.name} · {entry.type === 'income' ? '+' : '−'}{money(entry.amount)}</p>
-        : event ? <p className="event-time"><Clock3 size={13}/>{event.time ? new Date(`${event.date}T${event.time}`).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : 'All day'}</p>
-        : <p className="event-time">Scheduled · every two weeks</p>}
+      <AgendaDetails item={item} label={label}/>
     </div>
     {entry && <button className="icon-btn" aria-label={`Edit ${item.title} entry`} onClick={() => open({ kind: 'entry', item: entry })}><Pencil size={15}/></button>}
     {event && <button className="icon-btn danger" aria-label={`Delete event ${item.title}`} onClick={() => open({ kind: 'delete-event', item: event })}><Trash2 size={15}/></button>}
     {item.kind === 'payday' && <button className="icon-btn bordered" aria-label={`Log income for ${item.title}`}
       onClick={() => open({ kind: 'entry', date: selected, person: item.personId })}><Plus size={15}/></button>}
-    {event?.description && <p className="event-description">{event.description}</p>}
   </article>;
 }
 
@@ -52,10 +69,11 @@ export function CalendarView({ state, open, month, setMonth, selected, setSelect
         {days.map(day => {
           const items = byDate.get(day);
           return <button key={day} className={`calendar-day ${day.startsWith(month) ? '' : 'outside'} ${day === today ? 'today-cell' : ''} ${day === selected ? 'selected' : ''}`}
-            aria-label={[shortDate(day), ...items.map(item => item.title)].join(', ')} aria-pressed={day === selected} aria-current={day === today ? 'date' : undefined}
+            aria-label={[shortDate(day), ...items.map(item => item.time ? `${item.title} at ${displayTime(item.time)}` : item.title)].join(', ')} aria-pressed={day === selected} aria-current={day === today ? 'date' : undefined}
             onClick={() => { setSelected(day); setMonth(day.slice(0, 7)); }}>
             <span className="day-number">{Number(day.slice(-2))}</span>
             {items.slice(0, 2).map(item => <span className={`day-event ${styles[item.kind].tone} ${item.color ? 'category-calendar' : ''}`}
+              title={item.time ? `${displayTime(item.time)} · ${item.title}` : item.title}
               style={itemStyle(item)} key={item.id}>{item.title}</span>)}
             {items.length > 2 && <span className="day-more">+{items.length - 2}</span>}
           </button>;
