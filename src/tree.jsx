@@ -6,12 +6,16 @@ import { TREE_KINDS, skyAt, treeMeters } from './tree-model.js';
 
 const W = 400, CX = 200, PX = 110, GROUND = 70, SKY_PAD = 150, MIN_H = 470;
 const LOOKS = {
-  cherry: { trunk: '#7a5a48', leaves: ['#f7b6c8', '#f9c9d6', '#f29db5'], dots: '#fff4f7', fall: '#f7b6c8', spread: 54, wide: .98, bend: .62, puff: .9 },
-  oak: { trunk: '#7b5b3e', leaves: ['#5f9c5a', '#77b06b', '#4a8550'], dots: '#93c784', spread: 80, wide: 1.34, bend: .12, puff: 1.08 },
-  maple: { trunk: '#6e4f3a', leaves: ['#e8743b', '#f09a3e', '#d9502f'], dots: '#f6c453', fall: '#e8743b', spread: 64, wide: 1.08, bend: .36, puff: 1 },
-  pine: { trunk: '#6b4a35', leaves: ['#2f6b4f', '#3b7d5c', '#285c44'], cone: true },
+  cherry: { trunk: '#5e3d33', bark: '#8a5e4c', leaves: ['#e57fa4', '#f49bb9', '#f9bccf', '#fde2ea'], dots: '#ffffff', fall: '#f7b6c8', spread: 76, wide: 1.3, bend: .22 },
+  oak: { trunk: '#5a4230', bark: '#84664a', leaves: ['#3f7d4a', '#5a9a57', '#7ab56b', '#a9d58f'], dots: '#d3ecb4', spread: 82, wide: 1.36, bend: .12 },
+  maple: { trunk: '#553a2c', bark: '#7d5a44', leaves: ['#b8402a', '#dc5f33', '#ef8a3c', '#f8c063'], dots: '#fde3a0', fall: '#e8743b', spread: 66, wide: 1.12, bend: .34 },
+  pine: { trunk: '#6b4a35', bark: '#8a654b', leaves: ['#2f6b4f', '#3b7d5c', '#285c44'], cone: true },
 };
-const PUFFS = [[0, 0, 1], [-.85, .28, .7], [.85, .3, .68], [0, -.55, .66]];
+const CLOUD_BANK = [[-330, 6, 46], [-270, 30, 56], [-205, 8, 44], [-150, -6, 30], [250, 2, 40], [305, 26, 54], [370, 4, 46], [440, 22, 38], [-420, 20, 40]];
+const GRASS = Array.from({ length: 70 }, (_, i) => [(i - 35) * 17 + rnd(i, 15) * 12, 7 + rnd(i, 16) * 9, (rnd(i, 17) - .5) * 10]);
+const FALLEN = Array.from({ length: 26 }, (_, i) => [(rnd(i, 18) - .5) * 560, 10 + rnd(i, 19) * 48, rnd(i, 20) * 180]);
+const grassDip = dx => dx * dx / 5200;
+const SPARKLES = [[14, 22, 0], [72, 14, 1.4], [86, 46, 2.3], [30, 58, .8], [58, 34, 3.1], [8, 70, 1.9]];
 const STARS = Array.from({ length: 34 }, (_, i) => ({ x: rnd(i, 1) * 100, y: rnd(i, 2) * 72, r: 1 + rnd(i, 3) * 1.6 }));
 
 function rnd(k, salt) {
@@ -63,18 +67,34 @@ function crownFor(look, R, base, crownH, topW) {
     const ex = CX + Math.sin(angle) * R * look.wide * (.86 + rnd(i, 12) * .16);
     const ey = base - crownH * (.26 + .62 * Math.cos(angle) ** 1.2);
     return {
-      i, sx, sy, ex, ey, r: R * (.2 + rnd(i, 13) * .05) * look.puff, width: Math.max(1.6, topW * (.62 - Math.abs(f) * .22)),
+      i, f, sx, sy, ex, ey, size: R / 96 * (.64 + rnd(i, 13) * .2), width: Math.max(1.8, topW * (.66 - Math.abs(f) * .2)),
       cx: sx + (ex - sx) * (.55 - look.bend * .4), cy: sy - (sy - ey) * (.12 + look.bend * .8), outer: Math.abs(f) > .3,
     };
   });
 }
 
-function Puff({ x, y, r, look, k }) {
-  return <>
-    {PUFFS.map(([dx, dy, size], i) => <ellipse key={i} cx={x + dx * r} cy={y + dy * r} rx={size * r * 1.12} ry={size * r * .84} fill={look.leaves[(k + i) % 3]}/>)}
-    {r > 9 && [[-.5, -.2], [.45, .1], [.05, -.6]].map(([dx, dy], i) => <circle key={i} cx={x + dx * r} cy={y + dy * r} r={Math.max(1.6, r * .09)} fill={look.dots}/>)}
-  </>;
+// A spray is one bough's worth of foliage: shadowed dabs underneath, lighter ones on the
+// sunlit top. Three variants are defined once and reused across the whole tree.
+function sprayDabs(seed) {
+  const dabs = [];
+  const within = x => Math.sqrt(Math.max(0, 1 - (x / 62) ** 2));
+  for (let i = 0; i < 9; i++) dabs.push({ x: (rnd(i, seed) - .5) * 96, y: 7 + (rnd(i, seed + 1) - .5) * 16, r: 13 + rnd(i, seed + 2) * 7, shade: 0 });
+  for (let i = 0; i < 26; i++) { const x = (rnd(i, seed + 3) - .5) * 116; dabs.push({ x, y: (rnd(i, seed + 4) - .55) * 38 * within(x), r: 6.5 + rnd(i, seed + 5) * 4, shade: 1 + i % 2 }); }
+  for (let i = 0; i < 16; i++) { const x = (rnd(i, seed + 6) - .5) * 100 - 6; dabs.push({ x, y: (-5 - rnd(i, seed + 7) * 17) * within(x), r: 3.6 + rnd(i, seed + 8) * 2.6, shade: 3 }); }
+  for (let i = 0; i < 6; i++) { const x = (rnd(i, seed + 9) - .5) * 90; dabs.push({ x, y: (rnd(i, seed + 10) - .7) * 26 * within(x), r: 1.7, shade: 4 }); }
+  return dabs;
 }
+const SPRAYS = [21, 47, 83].map(sprayDabs);
+
+function SprayDefs({ look }) {
+  const fills = [...look.leaves, look.dots];
+  return <defs>
+    {SPRAYS.map((dabs, v) => <g id={`tree-spray-${v}`} key={v}>{dabs.map((dab, i) => <circle key={i} cx={dab.x} cy={dab.y} r={dab.r} fill={fills[dab.shade]}/>)}</g>)}
+    <g id="tree-spray-back">{SPRAYS[0].filter(dab => dab.shade < 3).map((dab, i) => <circle key={i} cx={dab.x} cy={dab.y} r={dab.r} fill={fills[Math.min(1, dab.shade)]}/>)}</g>
+    <linearGradient id="tree-hill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#a9d77c"/><stop offset=".35" stopColor="#7fbf6c"/><stop offset="1" stopColor="#5fa564"/></linearGradient>
+  </defs>;
+}
+const Spray = ({ x, y, scale, v, tilt = 0 }) => <use href={`#tree-spray-${v}`} transform={`translate(${x} ${y}) rotate(${tilt}) scale(${scale})`}/>;
 
 function Bird({ x, y, side }) {
   return <g transform={`translate(${x} ${y}) scale(${-side} 1)`}>
@@ -109,8 +129,8 @@ export function SavingsTree({ balance, tree }) {
   const canopyH = look.cone ? R * 2.6 : R * 1.9;
   const trunkTop = look.cone ? treeTop + R * .5 : treeTop + canopyH;
   const canopyBottom = treeTop + canopyH;
-  const baseW = h ? 5 + 44 * (1 - Math.exp(-h / 6)) : 0;
-  const topW = Math.max(2.5, baseW * .34);
+  const baseW = h ? 7 + 58 * (1 - Math.exp(-h / 6)) : 0;
+  const topW = Math.max(3, baseW * .42);
   const crown = look.cone ? [] : crownFor(look, R, trunkTop, canopyH - R * .2, topW);
   const branches = branchesFor(h, groundY, canopyBottom, baseW, topW, trunkTop);
 
@@ -167,13 +187,45 @@ export function SavingsTree({ balance, tree }) {
         <div className="tree-stars">{STARS.map((star, i) => <span key={i} style={{ left: star.x + '%', top: star.y + '%', width: star.r * 1.3, height: star.r * 1.3 }}/>)}</div>
         {sky.sun && <span className="tree-sun" style={{ left: sky.sun.x + '%', top: sky.sun.y + '%' }}/>}
         {sky.moon && <span className="tree-moon" style={{ left: sky.moon.x + '%', top: sky.moon.y + '%' }}/>}
+        {sky.sun && <span className="tree-rays" style={{ left: sky.sun.x + '%', top: sky.sun.y + '%' }}/>}
         <span className="tree-cloud one"/><span className="tree-cloud two"/><span className="tree-cloud three"/>
       </div>
       <div className="tree-scroll" ref={scroller} tabIndex={0} role="img" aria-label={`${kindName} tree, ${target.toFixed(1)} meters tall. One meter for every ${money(tree.perMeter, true)} saved.`} {...pointer}>
         <svg className="tree-svg" viewBox={`0 0 ${W} ${totalH}`} preserveAspectRatio="xMidYMax meet">
-          <ellipse cx={CX} cy={groundY + 150} rx="1400" ry="170" fill="#8cc084"/>
-          <ellipse cx={CX} cy={groundY + 190} rx="1400" ry="190" fill="#74ad72"/>
-          {[-150, -96, 84, 138].map((dx, i) => <path key={dx} d={`M${CX + dx} ${groundY + 6}q-3 -12 -7 -15M${CX + dx} ${groundY + 6}q1 -14 1 -19M${CX + dx} ${groundY + 6}q4 -11 8 -13`} stroke="#5d9960" strokeWidth="2.4" strokeLinecap="round" fill="none" transform={`translate(0 ${i % 2 * 12})`}/>)}
+          <SprayDefs look={look}/>
+          <g className="tree-bank">{CLOUD_BANK.map(([dx, dy, r], i) => <circle key={i} cx={CX + dx} cy={groundY - dy} r={r} fill="#fff"/>)}</g>
+          <ellipse cx={CX} cy={groundY + 600} rx="2600" ry="612" fill="url(#tree-hill)"/>
+          {GRASS.map(([dx, height, lean], i) => <path key={i} d={`M${CX + dx - 3} ${groundY + grassDip(dx) + 4}Q${CX + dx + lean * .4} ${groundY + grassDip(dx) - height * .6} ${CX + dx + lean} ${groundY + grassDip(dx) - height}Q${CX + dx + lean * .7} ${groundY + grassDip(dx) - height * .4} ${CX + dx + 3} ${groundY + grassDip(dx) + 4}Z`} fill={i % 3 ? '#9ad27a' : '#84c46c'}/>)}
+          {look.fall && target >= 1 && FALLEN.map(([dx, dy, turn], i) => <ellipse key={i} cx={CX + dx} cy={groundY + dy} rx="5" ry="2.6" fill={look.fall} transform={`rotate(${turn} ${CX + dx} ${groundY + dy})`}/>)}
+          {h > 0 && <g className="tree-plant">
+            <path d={`M${CX - baseW / 2 - baseW * .35} ${groundY + 4}Q${CX - baseW / 2} ${groundY - 2} ${CX - baseW / 2} ${groundY - baseW * .7}L${CX - topW / 2} ${trunkTop}H${CX + topW / 2}L${CX + baseW / 2} ${groundY - baseW * .7}Q${CX + baseW / 2} ${groundY - 2} ${CX + baseW / 2 + baseW * .35} ${groundY + 4}Z`} fill={look.trunk}/>
+            <path d={`M${CX + baseW * .14} ${groundY - baseW * .5}L${CX + topW * .12} ${trunkTop}H${CX + topW * .36}L${CX + baseW * .36} ${groundY - baseW * .5}Z`} fill={look.bark} opacity=".3"/>
+            {branches.map(branch => {
+              const { k, side, x, y, length, lift } = branch;
+              const ex = x + side * length, ey = y - lift * branch.grown;
+              return <g key={k}>
+                <path d={`M${x} ${y + 3}C${x + side * length * .4} ${y} ${x + side * length * .75} ${ey + 6} ${ex} ${ey}`} stroke={look.trunk} strokeWidth={3 + Math.min(5, baseW * .1)} strokeLinecap="round" fill="none"/>
+                <g className="tree-tuft" style={{ transformOrigin: `${ex}px ${ey}px`, animationDelay: `${-rnd(k, 7) * 5}s` }}>
+                  {look.cone
+                    ? <ellipse cx={ex - side * length * .3} cy={ey + 5} rx={length * .62} ry={9 * branch.grown} fill={look.leaves[k % 3]} transform={`rotate(${-side * 12} ${ex} ${ey})`}/>
+                    : <Spray x={ex - side * 6} y={ey - 6} scale={(.36 + rnd(k, 14) * .16) * branch.grown} v={k % 3} tilt={-side * 8}/>}
+                </g>
+              </g>;
+            })}
+            <g className="tree-canopy" style={{ transformOrigin: `${CX}px ${trunkTop}px` }}>
+              {look.cone
+                ? [0, 1, 2, 3].map(i => { const top = treeTop + i * R * .52, half = R * (.42 + i * .2); return <path key={i} d={`M${CX} ${top}L${CX + half} ${top + R * .95}Q${CX} ${top + R * 1.08} ${CX - half} ${top + R * .95}Z`} fill={look.leaves[i % 3]}/>; }).reverse()
+                : <>
+                  {crown.map(limb => <use key={'b' + limb.i} href="#tree-spray-back" transform={`translate(${limb.ex - limb.f * R * .12} ${limb.ey + 14 * limb.size}) scale(${limb.size * 1.05})`}/>)}
+                  <path d={`M${CX - topW / 2} ${trunkTop + 1}L${CX} ${trunkTop - canopyH * .62}L${CX + topW / 2} ${trunkTop + 1}Z`} fill={look.trunk}/>
+                  {crown.map(limb => <path key={limb.i} d={`M${limb.sx} ${limb.sy}Q${limb.cx} ${limb.cy} ${limb.ex} ${limb.ey}`} stroke={look.trunk} strokeWidth={limb.width} strokeLinecap="round" fill="none"/>)}
+                  {crown.filter(limb => limb.outer && R > 40).map(limb => <Spray key={'m' + limb.i} x={(limb.sx + 2 * limb.cx + limb.ex) / 4} y={(limb.sy + 2 * limb.cy + limb.ey) / 4 - 16 * limb.size} scale={limb.size * .7} v={(limb.i + 1) % 3} tilt={limb.f * -8}/>)}
+                  {crown.map(limb => <Spray key={limb.i} x={limb.ex} y={limb.ey - 10 * limb.size} scale={limb.size} v={limb.i % 3} tilt={limb.f * -10}/>)}
+                  {R > 46 && [[-.4, .8], [.38, .84], [0, 1.02]].map(([dx, up], i) => <Spray key={'t' + i} x={CX + dx * R * look.wide} y={trunkTop - canopyH * up * .86} scale={R / 96 * .66} v={(i + 2) % 3}/>)}
+                </>}
+            </g>
+            {perch && <Bird key={bird.id} x={perch.top ? CX + R * .1 : perch.x + perch.side * perch.length * .62} y={perch.top ? treeTop + (look.cone ? R * .62 : R * .12) : perch.y - perch.lift * .55} side={perch.top ? -1 : perch.side}/>}
+          </g>}
           {lines.map(m => {
             const y = groundY - m * PX, reached = m <= h + 1e-9, amount = money(m * tree.perMeter, true);
             return <g key={m} className={reached ? 'tree-line reached' : 'tree-line'}>
@@ -184,37 +236,12 @@ export function SavingsTree({ balance, tree }) {
               <text x={W - 15} y={y + 4.5} textAnchor="end">{amount}</text>
             </g>;
           })}
-          {h > 0 && <g className="tree-plant">
-            <path d={`M${CX - baseW / 2 - baseW * .35} ${groundY + 4}Q${CX - baseW / 2} ${groundY - 2} ${CX - baseW / 2} ${groundY - baseW * .7}L${CX - topW / 2} ${trunkTop}H${CX + topW / 2}L${CX + baseW / 2} ${groundY - baseW * .7}Q${CX + baseW / 2} ${groundY - 2} ${CX + baseW / 2 + baseW * .35} ${groundY + 4}Z`} fill={look.trunk}/>
-            {branches.map(branch => {
-              const { k, side, x, y, length, lift } = branch;
-              const ex = x + side * length, ey = y - lift * branch.grown;
-              return <g key={k}>
-                <path d={`M${x} ${y + 3}C${x + side * length * .4} ${y} ${x + side * length * .75} ${ey + 6} ${ex} ${ey}`} stroke={look.trunk} strokeWidth={3 + Math.min(5, baseW * .1)} strokeLinecap="round" fill="none"/>
-                <g className="tree-tuft" style={{ transformOrigin: `${ex}px ${ey}px`, animationDelay: `${-rnd(k, 7) * 5}s` }}>
-                  {look.cone
-                    ? <ellipse cx={ex - side * length * .3} cy={ey + 5} rx={length * .62} ry={9 * branch.grown} fill={look.leaves[k % 3]} transform={`rotate(${-side * 12} ${ex} ${ey})`}/>
-                    : [[0, -3, 13], [-side * 11, 3, 10], [side * 9, 4, 9]].map(([dx, dy, r], i) => <ellipse key={i} cx={ex + dx} cy={ey + dy} rx={r * 1.15 * branch.grown} ry={r * .74 * branch.grown} fill={look.leaves[(k + i) % 3]}/>)}
-                </g>
-              </g>;
-            })}
-            <g className="tree-canopy" style={{ transformOrigin: `${CX}px ${trunkTop}px` }}>
-              {look.cone
-                ? [0, 1, 2, 3].map(i => { const top = treeTop + i * R * .52, half = R * (.42 + i * .2); return <path key={i} d={`M${CX} ${top}L${CX + half} ${top + R * .95}Q${CX} ${top + R * 1.08} ${CX - half} ${top + R * .95}Z`} fill={look.leaves[i % 3]}/>; }).reverse()
-                : <>
-                  <path d={`M${CX - topW / 2} ${trunkTop + 1}L${CX} ${trunkTop - canopyH * .62}L${CX + topW / 2} ${trunkTop + 1}Z`} fill={look.trunk}/>
-                  {crown.map(limb => <path key={limb.i} d={`M${limb.sx} ${limb.sy}Q${limb.cx} ${limb.cy} ${limb.ex} ${limb.ey}`} stroke={look.trunk} strokeWidth={limb.width} strokeLinecap="round" fill="none"/>)}
-                  {crown.filter(limb => limb.outer && R > 40).map(limb => <Puff key={'m' + limb.i} x={(limb.sx + 2 * limb.cx + limb.ex) / 4} y={(limb.sy + 2 * limb.cy + limb.ey) / 4 - limb.r * .3} r={limb.r * .62} look={look} k={limb.i + 1}/>)}
-                  {crown.map(limb => <Puff key={limb.i} x={limb.ex} y={limb.ey} r={limb.r} look={look} k={limb.i}/>)}
-                </>}
-            </g>
-            {perch && <Bird key={bird.id} x={perch.top ? CX + R * .1 : perch.x + perch.side * perch.length * .62} y={perch.top ? treeTop + (look.cone ? R * .62 : R * .08) : perch.y - perch.lift * .55} side={perch.top ? -1 : perch.side}/>}
-          </g>}
           {!h && <g><ellipse cx={CX} cy={groundY + 2} rx="26" ry="9" fill="#8a6b4f"/><path d={`M${CX} ${groundY - 2}v-12`} stroke="#5d9960" strokeWidth="3" strokeLinecap="round"/><ellipse cx={CX + 6} cy={groundY - 16} rx="7" ry="4" fill="#77b06b" transform={`rotate(-30 ${CX + 6} ${groundY - 16})`}/></g>}
         </svg>
       </div>
-      {look.fall && target >= 1 && <div className="tree-falling" aria-hidden="true">{[0, 1, 2, 3, 4, 5].map(i => <span key={i} style={{ left: 28 + rnd(i, 8) * 44 + '%', background: look.fall, animationDelay: `${-i * 1.9}s`, animationDuration: `${9 + rnd(i, 9) * 5}s` }}/>)}</div>}
+      {look.fall && target >= 1 && <div className="tree-falling" aria-hidden="true">{[0, 1, 2, 3, 4, 5, 6, 7, 8].map(i => <span key={i} style={{ left: 14 + rnd(i, 8) * 66 + '%', background: look.fall, animationDelay: `${-i * 1.4}s`, animationDuration: `${9 + rnd(i, 9) * 5}s` }}/>)}</div>}
       <div className="tree-dusk" aria-hidden="true"/>
+      <div className="tree-sparkles" aria-hidden="true">{SPARKLES.map(([x, y, delay], i) => <span key={i} style={{ left: x + '%', top: y + '%', animationDelay: `${-delay}s` }}/>)}</div>
     </div>
     <p className="tree-hint">Scroll or drag to move up and down the tree. Each dotted line is one meter, or {money(tree.perMeter, true)} saved.</p>
   </section>;
