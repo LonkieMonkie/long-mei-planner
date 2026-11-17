@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { ArrowDownLeft, ArrowUpRight, PiggyBank } from 'lucide-react';
-import { PEOPLE, PERSONAL_CATEGORY_ID, WEDDING_CATEGORY_ID, categoryColor, contribution, debtFromFields, decimalUnits, entryContribution, entryFromFields, incomeSplits, entryTime, localDate, localTime, money, shortDate, savingsRule, setJointBalance, settleDebt } from './model.js';
+import { PEOPLE, PERSONAL_CATEGORY_ID, WEDDING_CATEGORY_ID, categoryColor, dateFromKey, contribution, debtFromFields, decimalUnits, entryContribution, entryFromFields, incomeSplits, entryTime, localDate, localTime, money, shortDate, savingsRule, setJointBalance, settleDebt } from './model.js';
 import { ActionForm, Modal } from './ui.jsx';
 import { CategoryForm } from './category-form.jsx';
-import { REPEATS, deleteEvent, eventFromFields } from './events.js';
+import { REPEATS, deleteEvent, editEvent, eventFromFields, occurrenceIndex } from './events.js';
 
 function EntryForm({ state, item, date, person, me, weddingDeposit = false, close, save }) {
   const [type, setType] = useState(weddingDeposit ? 'expense' : item?.type ?? 'income');
@@ -146,7 +146,7 @@ export function Dialogs({ modal, state, totals, me, close, save, onEventSaved })
     'wedding-deposit': 'Add Wedding deposit',
     category: item ? item.name + ' settings' : 'Add a budget category', limit: 'Edit budget limit',
     balance: 'Edit joint balance', goal: item ? 'Edit savings goal' : 'Add a savings goal',
-    event: 'Add event', 'delete-event': item?.repeat ? 'Delete repeating event?' : 'Delete event?', 'delete-entry': 'Delete entry?',
+    event: item ? 'Edit event' : 'Add event', 'delete-event': item?.repeat ? 'Delete repeating event?' : 'Delete event?', 'delete-entry': 'Delete entry?',
     debt: 'Log a debt', 'settle-debt': 'Confirm payment?',
   };
   const done = (update, message) => { save(update, message); close(); };
@@ -181,7 +181,7 @@ export function Dialogs({ modal, state, totals, me, close, save, onEventSaved })
       }}><label>Goal name<input name="name" defaultValue={item?.name} placeholder="e.g. Wedding" maxLength={70} required autoFocus/></label><label>Target ($)<input name="target" type="number" min="0.01" max="1000000000" step="0.01" defaultValue={item ? item.target / 100 : ''} required/></label></ActionForm>;
       break;
     case 'event':
-      content = <EventForm date={modal.date} close={close} done={done} onEventSaved={onEventSaved}/>;
+      content = <EventForm date={modal.date} item={item} close={close} done={done} onEventSaved={onEventSaved}/>;
       break;
     case 'debt':
       content = <DebtForm close={close} done={done} me={me}/>;
@@ -223,31 +223,62 @@ function DebtForm({ close, done, me }) {
   </ActionForm>;
 }
 
-function EventForm({ date, close, done, onEventSaved }) {
-  const [freq, setFreq] = useState('none');
-  const [ends, setEnds] = useState('never');
-  const [start, setStart] = useState(date ?? localDate());
-  const unit = REPEATS.find(item => item.id === freq).unit;
-  return <ActionForm cancel={close} label="Save event" onSave={fields => {
-    const event = eventFromFields(fields);
-    done(current => ({ ...current, events: [...current.events, event] }), event.repeat ? 'Repeating event saved' : 'Event saved');
-    onEventSaved(event.date);
+function EventForm({ date, item, close, done, onEventSaved }) {
+  // When editing a repeating event, `date` is the occurrence that was clicked.
+  const occurrence = date ?? item?.date ?? localDate();
+  const series = Boolean(item?.repeat);
+  const [scope, setScope] = useState('all');
+  const startFor = which => item && which === 'all' ? item.date : occurrence;
+  const [start, setStart] = useState(startFor('all'));
+  const [freq, setFreq] = useState(item?.repeat?.freq ?? 'none');
+  const [ends, setEnds] = useState(item?.repeat?.ends ?? 'never');
+  const remaining = item?.repeat?.ends === 'after' ? Math.max(1, item.repeat.count - Math.max(0, occurrenceIndex(item, occurrence))) : 10;
+  const [count, setCount] = useState(String(item?.repeat?.count ?? 10));
+  const repeating = scope !== 'one';
+  const unit = REPEATS.find(rule => rule.id === freq).unit;
+  const day = dateFromKey(occurrence).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  function chooseScope(which) {
+    setScope(which);
+    setStart(startFor(which));
+    if (item?.repeat?.ends === 'after') setCount(String(which === 'following' ? remaining : item.repeat.count));
+  }
+  return <ActionForm cancel={close} label={item ? 'Save changes' : 'Save event'} onSave={fields => {
+    const edited = eventFromFields(repeating ? fields : { ...fields, freq: 'none' });
+    done(current => {
+      if (!item) return { ...current, events: [...current.events, edited] };
+      const original = current.events.find(event => event.id === item.id);
+      if (!original) throw new Error('This event was deleted on another device. Close the form to see the latest calendar.');
+      return { ...current, events: editEvent(current.events, original, occurrence, scope, edited) };
+    }, item ? 'Event updated' : edited.repeat ? 'Repeating event saved' : 'Event saved');
+    onEventSaved(edited.date);
   }}>
-    <label>Title<input name="title" maxLength={100} placeholder="e.g. Rent due" required autoFocus/></label>
-    <div className="form-row">
-      <label>Date<input name="date" type="date" value={start} onChange={e => setStart(e.target.value)} required/></label>
-      <label>Time<input name="time" type="time"/></label>
-    </div>
-    <label>Repeat<select name="freq" value={freq} onChange={e => setFreq(e.target.value)}>{REPEATS.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-    {freq !== 'none' && <div className="form-row">
-      <label>Ends<select name="ends" value={ends} onChange={e => setEnds(e.target.value)}>
-        <option value="never">Never</option><option value="on">On a date</option><option value="after">After a number of times</option>
-      </select></label>
-      {ends === 'on' && <label>Last date<input name="until" type="date" min={start} required/></label>}
-      {ends === 'after' && <label>Number of times<input name="count" type="number" min="1" max="999" step="1" defaultValue="10" required/></label>}
+    {series && <div className="edit-scope">
+      <span>Change</span>
+      <div className="segmented" role="group" aria-label="Which dates to change">
+        <button type="button" aria-pressed={scope === 'all'} onClick={() => chooseScope('all')}>Every date</button>
+        <button type="button" aria-pressed={scope === 'one'} onClick={() => chooseScope('one')}>Only {day}</button>
+        {occurrence > item.date && <button type="button" aria-pressed={scope === 'following'} onClick={() => chooseScope('following')}>{day} and later</button>}
+      </div>
     </div>}
-    {freq !== 'none' && <p className="field-help">Repeats every {unit} from {start ? shortDate(start) : 'the date above'}{ends === 'never' ? ', with no end date' : ''}.{freq === 'monthly' || freq === 'yearly' ? ' Dates past the end of a shorter month move to its last day.' : ''}</p>}
-    <label>Description<textarea name="description" rows={3} maxLength={1000} placeholder="Optional details"/></label>
+    <label>Title<input name="title" maxLength={100} defaultValue={item?.title} placeholder="e.g. Rent due" required autoFocus/></label>
+    <div className="form-row">
+      <label>{series && scope === 'all' ? 'First date' : 'Date'}<input name="date" type="date" value={start} onChange={e => setStart(e.target.value)} required/></label>
+      <label>Time<input name="time" type="time" defaultValue={item?.time}/></label>
+    </div>
+    {repeating && <>
+      <label>Repeat<select name="freq" value={freq} onChange={e => setFreq(e.target.value)}>{REPEATS.map(rule => <option key={rule.id} value={rule.id}>{rule.name}</option>)}</select></label>
+      {freq !== 'none' && <div className="form-row">
+        <label>Ends<select name="ends" value={ends} onChange={e => setEnds(e.target.value)}>
+          <option value="never">Never</option><option value="on">On a date</option><option value="after">After a number of times</option>
+        </select></label>
+        {ends === 'on' && <label>Last date<input name="until" type="date" min={start} defaultValue={item?.repeat?.until} required/></label>}
+        {ends === 'after' && <label>Number of times<input name="count" type="number" min="1" max="999" step="1" value={count} onChange={e => setCount(e.target.value)} required/></label>}
+      </div>}
+      {freq !== 'none' && <p className="field-help">Repeats every {unit} from {start ? shortDate(start) : 'the date above'}{ends === 'never' ? ', with no end date' : ''}.{freq === 'monthly' || freq === 'yearly' ? ' Dates past the end of a shorter month move to its last day.' : ''}</p>}
+    </>}
+    {series && scope === 'one' && <p className="field-help">Only {shortDate(occurrence)} changes. The other dates in the series stay as they are.</p>}
+    {series && scope === 'following' && <p className="field-help">Dates before {shortDate(occurrence)} stay as they are. From then on, the event follows these details.</p>}
+    <label>Description<textarea name="description" rows={3} maxLength={1000} defaultValue={item?.description} placeholder="Optional details"/></label>
   </ActionForm>;
 }
 

@@ -98,6 +98,21 @@ export function deleteEvent(events, id, date, scope) {
   });
 }
 
+// Applies an edit to every date, to one date only, or to one date and the ones after it.
+// Editing one date skips it in the series and adds a separate one-off event there; editing
+// from a date onward ends the series the day before and starts a new one with the changes.
+export function editEvent(events, original, date, scope, edited) {
+  if (!original.repeat || scope === 'all' || (scope === 'following' && date <= original.date)) {
+    const replacement = { ...edited, id: original.id, ...(edited.repeat && original.skip?.length ? { skip: original.skip } : {}) };
+    return events.map(event => event.id === original.id ? replacement : event);
+  }
+  if (scope === 'one') {
+    const { repeat, ...single } = edited;
+    return [...deleteEvent(events, original.id, date, 'one'), single];
+  }
+  return [...deleteEvent(events, original.id, date, 'following'), edited];
+}
+
 // Accepts events saved by earlier versions and drops malformed repeat rules.
 export function normalizeEvent(event) {
   const clean = { ...event };

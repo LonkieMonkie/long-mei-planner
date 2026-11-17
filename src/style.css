@@ -332,6 +332,10 @@ button.secondary:active { box-shadow: 0 1px 0 var(--color-line); }
 .split-lock { width: 17px; flex-shrink: 0; }
 .split-rest { display: inline-block; width: 70px; padding-right: 9px; text-align: right; font-weight: 700; }
 .split-total.done strong { color: #1f6b4c; }
+.edit-scope { display: grid; gap: 6px; font-size: 12px; font-weight: 700; }
+.edit-scope .segmented { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); }
+.edit-scope .segmented button { font-size: 12px; white-space: nowrap; }
+@media (max-width: 520px) { .edit-scope .segmented { grid-template-columns: 1fr; border-radius: 18px; } }
 .delete-choices { display: grid; gap: 8px; }
 .danger-text { color: #a5254a; }
 .danger-text:hover { background: #fce9ee; }

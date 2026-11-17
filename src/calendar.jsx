@@ -44,6 +44,7 @@ function AgendaItem({ item, open }) {
       <AgendaDetails item={item} label={label}/>
     </div>
     {entry && <button className="icon-btn" aria-label={`Edit ${item.title} entry`} onClick={() => open({ kind: 'entry', item: entry })}><Pencil size={15}/></button>}
+    {event && <button className="icon-btn" aria-label={`Edit event ${item.title}`} onClick={() => open({ kind: 'event', item: event, date: item.date })}><Pencil size={15}/></button>}
     {event && <button className="icon-btn danger" aria-label={`Delete event ${item.title}`} onClick={() => open({ kind: 'delete-event', item: event, date: item.date })}><Trash2 size={15}/></button>}
   </article>;
 }

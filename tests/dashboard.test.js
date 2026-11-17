@@ -266,3 +266,29 @@ test('Personal is a permanent category, and an existing Personal category become
   assert.equal(read.entries[0].categoryId, 'personal');
   assert.equal(readState({ getItem: () => JSON.stringify(freshData()) }).categories.filter(category => category.id === 'personal').length, 1);
 });
+
+test('editing an event changes every date, one date, or one date and later', async () => {
+  const { editEvent, eventFromFields, occursOn } = await import('../src/events.js');
+  const base = { title: 'Gym', date: '2026-11-02', time: '07:00', description: '', freq: 'weekly', ends: 'after', count: '6' };
+  const series = { ...eventFromFields(base, 'gym'), skip: ['2026-11-09'] };
+  const moved = eventFromFields({ ...base, title: 'Gym class', time: '18:00' });
+
+  const all = editEvent([series], series, '2026-11-16', 'all', moved);
+  assert.deepEqual(all.map(event => [event.id, event.title, event.time, event.skip]), [['gym', 'Gym class', '18:00', ['2026-11-09']]]);
+
+  const one = editEvent([series], series, '2026-11-16', 'one', { ...moved, date: '2026-11-17' });
+  assert.equal(one.length, 2);
+  assert.equal(occursOn(one[0], '2026-11-16'), false);
+  assert.equal(occursOn(one[0], '2026-11-23'), true);
+  assert.deepEqual([one[1].title, one[1].date, 'repeat' in one[1]], ['Gym class', '2026-11-17', false]);
+
+  const later = editEvent([series], series, '2026-11-16', 'following', eventFromFields({ ...base, date: '2026-11-16', count: '3', time: '18:00' }, 'new'));
+  assert.deepEqual(later[0].repeat, { freq: 'weekly', ends: 'on', until: '2026-11-09' });
+  assert.equal(occursOn(later[0], '2026-11-02'), true);
+  assert.deepEqual(['2026-11-16', '2026-11-30', '2026-12-07'].map(day => occursOn(later[1], day)), [true, true, false]);
+
+  // Editing from the first date is the same as editing every date.
+  assert.equal(editEvent([series], series, '2026-11-02', 'following', moved)[0].id, 'gym');
+  const single = eventFromFields({ title: 'Dentist', date: '2026-12-01' }, 'dentist');
+  assert.deepEqual(editEvent([single], single, '2026-12-01', 'one', { ...single, id: 'x', title: 'Dentist (moved)' }).map(event => [event.id, event.title]), [['dentist', 'Dentist (moved)']]);
+});
