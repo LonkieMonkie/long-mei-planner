@@ -187,7 +187,6 @@ export function SavingsTree({ balance, tree }) {
         <div className="tree-stars">{STARS.map((star, i) => <span key={i} style={{ left: star.x + '%', top: star.y + '%', width: star.r * 1.3, height: star.r * 1.3 }}/>)}</div>
         {sky.sun && <span className="tree-sun" style={{ left: sky.sun.x + '%', top: sky.sun.y + '%' }}/>}
         {sky.moon && <span className="tree-moon" style={{ left: sky.moon.x + '%', top: sky.moon.y + '%' }}/>}
-        {sky.sun && <span className="tree-rays" style={{ left: sky.sun.x + '%', top: sky.sun.y + '%' }}/>}
         <span className="tree-cloud one"/><span className="tree-cloud two"/><span className="tree-cloud three"/>
       </div>
       <div className="tree-scroll" ref={scroller} tabIndex={0} role="img" aria-label={`${kindName} tree, ${target.toFixed(1)} meters tall. One meter for every ${money(tree.perMeter, true)} saved.`} {...pointer}>
