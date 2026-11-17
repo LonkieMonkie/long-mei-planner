@@ -4,11 +4,11 @@ import { PEOPLE, WEDDING_CATEGORY_ID, contribution, debtFromFields, decimalUnits
 import { ActionForm, Modal } from './ui.jsx';
 import { CategoryForm } from './category-form.jsx';
 
-function EntryForm({ state, item, date, person, weddingDeposit = false, close, save }) {
+function EntryForm({ state, item, date, person, me, weddingDeposit = false, close, save }) {
   const [type, setType] = useState(weddingDeposit ? 'expense' : item?.type ?? 'income');
   const [amount, setAmount] = useState(item ? String(item.amount / 100) : '');
   const [categoryId, setCategoryId] = useState(weddingDeposit ? WEDDING_CATEGORY_ID : item?.categoryId ?? '');
-  const [personId, setPersonId] = useState(item?.personId ?? person ?? 'long');
+  const [personId, setPersonId] = useState(item?.personId ?? person ?? me ?? 'long');
   const category = state.categories.find(item => item.id === categoryId);
   const { rate, goalId } = savingsRule(category, personId, state.goals, item);
   const [initialTime] = useState(() => item ? entryTime(item) : localTime());
@@ -31,7 +31,9 @@ function EntryForm({ state, item, date, person, weddingDeposit = false, close, s
     </div>}
     <input type="hidden" name="type" value={type}/>
     {weddingDeposit && <p className="field-help">This will log a Wedding budget entry and add the amount shown below to Joint Savings.</p>}
-    <label>Who is adding this?<select name="personId" value={personId} onChange={e => setPersonId(e.target.value)}>{PEOPLE.map(person => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label>
+    {me && !item && !person
+      ? <input type="hidden" name="personId" value={me}/>
+      : <label>Who is adding this?<select name="personId" value={personId} onChange={e => setPersonId(e.target.value)}>{PEOPLE.map(person => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label>}
     <div className="form-row">
       <label>Transaction date<input name="date" type="date" defaultValue={item?.date ?? date ?? localDate()} required/></label>
       <label>Transaction time<input name="time" type="time" defaultValue={initialTime} required/></label>
@@ -53,7 +55,7 @@ function titleValue(value, label) {
   return name;
 }
 
-export function Dialogs({ modal, state, totals, close, save, onEventSaved }) {
+export function Dialogs({ modal, state, totals, me, close, save, onEventSaved }) {
   if (!modal) return null;
   const { kind, item } = modal;
   const titles = {
@@ -69,7 +71,7 @@ export function Dialogs({ modal, state, totals, close, save, onEventSaved }) {
   switch (kind) {
     case 'entry':
     case 'wedding-deposit':
-      content = <EntryForm {...{ state, item, close, save }} date={modal.date} person={modal.person} weddingDeposit={kind === 'wedding-deposit'}/>;
+      content = <EntryForm {...{ state, item, me, close, save }} date={modal.date} person={modal.person} weddingDeposit={kind === 'wedding-deposit'}/>;
       break;
     case 'category':
       content = <CategoryForm {...{ item, state, done, close }}/>;
@@ -107,7 +109,7 @@ export function Dialogs({ modal, state, totals, close, save, onEventSaved }) {
       <label>Description<textarea name="description" rows={3} maxLength={1000} placeholder="Optional details"/></label></ActionForm>;
       break;
     case 'debt':
-      content = <DebtForm close={close} done={done}/>;
+      content = <DebtForm close={close} done={done} me={me}/>;
       break;
     case 'settle-debt':
       content = <ActionForm cancel={close} label="Confirm payment" onSave={() => {
@@ -127,7 +129,7 @@ export function Dialogs({ modal, state, totals, close, save, onEventSaved }) {
   return <Modal title={titles[kind]} close={close}>{content}</Modal>;
 }
 
-function DebtForm({ close, done }) {
+function DebtForm({ close, done, me }) {
   const [debtorId, setDebtorId] = useState(PEOPLE[0].id);
   const creditor = PEOPLE.find(person => person.id !== debtorId);
   return <ActionForm cancel={close} label="Save debt" onSave={fields => {
@@ -142,6 +144,7 @@ function DebtForm({ close, done }) {
     </div>
     <label>Amount owed ($)<input name="amount" type="number" min="0.01" max="1000000000" step="0.01" required/></label>
     <label>Description<input name="description" placeholder="e.g. Dinner" maxLength={160} required/></label>
-    <label>Logged by<select name="addedBy">{PEOPLE.map(person => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label>
+    {me ? <input type="hidden" name="addedBy" value={me}/>
+      : <label>Logged by<select name="addedBy">{PEOPLE.map(person => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label>}
   </ActionForm>;
 }

@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { CalendarDays, CircleCheck, Download, LayoutGrid, PiggyBank, Plus, Scale, Settings as SettingsIcon, Sprout, Wallet } from 'lucide-react';
+import { CalendarDays, CircleAlert, CircleCheck, Download, LayoutGrid, PiggyBank, Plus, Scale, Settings as SettingsIcon, Sprout, Wallet } from 'lucide-react';
 import { Budget, Dashboard, MonthSelector, Savings } from './finance.jsx';
 import { CalendarView } from './calendar.jsx';
 import { DebtTracker } from './debts.jsx';
@@ -10,6 +10,9 @@ import { accentStyles } from './appearance.js';
 import { PlantPair } from './plants.jsx';
 import { LEGACY_KEY, PEOPLE, STORAGE_KEY, categoryColor, entryContribution, entryTime, freshData, localDate, readState, summarize } from './model.js';
 import { workbook } from './excel.js';
+import { AccountCard, AccountGate } from './account.jsx';
+import { connect } from './cloud.js';
+import { firebaseConfig } from './firebase-config.js';
 import './style.css';
 
 const views = [
@@ -90,6 +93,52 @@ function App() {
     };
   }, []);
 
+  // Login and syncing, active only when a Firebase project is configured.
+  const cloudOn = Boolean(firebaseConfig);
+  const [session, setSession] = useState({ status: cloudOn ? 'loading' : 'local', user: null, me: null, taken: [], synced: false, error: '' });
+  const backend = useRef(null);
+  const remote = useRef(null);
+  useEffect(() => {
+    if (!cloudOn) return;
+    let stopUser = () => {}, stopData = () => {}, cancelled = false;
+    const fail = error => setSession(current => ({ ...current, status: 'error', error: error.code === 'permission-denied'
+      ? 'This account isn’t allowed to open the planner. Check the two emails in your Firebase rules.'
+      : 'The shared planner couldn’t be reached. Check your connection and try again.' }));
+    connect(firebaseConfig).then(api => {
+      if (cancelled) return;
+      backend.current = api;
+      stopUser = api.onUser(user => {
+        stopData(); stopData = () => {}; remote.current = null;
+        if (!user) { setSession(current => ({ ...current, status: 'signed-out', user: null, me: null })); return; }
+        setSession(current => ({ ...current, status: 'loading', user }));
+        stopData = api.subscribe((data, fromCache) => {
+          if (!data && fromCache) return; // Offline with nothing cached: wait for the server's answer.
+          if (!data) {
+            // Very first sign-in: this browser's planner becomes the shared one.
+            let local;
+            try { local = readState(localStorage); } catch { local = freshData(); }
+            api.transact(current => current ? null : { json: JSON.stringify(local), rev: 1, profiles: {}, updatedAt: new Date().toISOString(), updatedBy: user.uid }).catch(fail);
+            return;
+          }
+          remote.current = data;
+          try { localStorage.setItem(STORAGE_KEY, data.json); } catch { /* The page still shows the synced copy from memory. */ }
+          let state;
+          try { state = readState({ getItem: () => data.json }); } catch (error) { fail(error); return; }
+          setLoaded(current => ({ ...current, state, error: '' }));
+          const profiles = data.profiles ?? {};
+          const me = profiles[user.uid] ?? null;
+          setSession({ status: me ? 'ready' : 'choose-profile', user, me, taken: Object.values(profiles), synced: !fromCache, error: '' });
+        }, fail);
+      });
+    }).catch(fail);
+    return () => { cancelled = true; stopUser(); stopData(); };
+  }, []);
+  const signOut = () => backend.current.signOut();
+  const chooseProfile = personId => backend.current.transact(current => {
+    if (Object.values(current.profiles ?? {}).includes(personId)) throw new Error('That profile is already linked to the other account.');
+    return { ...current, profiles: { ...current.profiles, [session.user.uid]: personId } };
+  });
+
   useEffect(() => {
     if (!notice) return;
     const timer = setTimeout(() => setNotice(null), 3500);
@@ -97,23 +146,43 @@ function App() {
   }, [notice]);
 
   function save(update, message) {
+    if (cloudOn && !navigator.onLine) throw new Error('You’re offline. Reconnect to save changes.');
     const next = update(readState(localStorage));
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); }
     catch { throw new Error('The browser couldn’t save this change. Check site storage and try again.'); }
     setLoaded(current => ({ ...current, state: next, error: '' }));
     setNotice({ message });
+    if (!cloudOn) return;
+    // Re-apply the same change to the newest shared copy, so edits from both devices are kept.
+    const uid = session.user.uid;
+    backend.current.transact(current => ({
+      ...current, json: JSON.stringify(update(readState({ getItem: () => current.json }))),
+      rev: (current.rev ?? 0) + 1, updatedAt: new Date().toISOString(), updatedBy: uid,
+    })).catch(() => {
+      if (remote.current) {
+        try { localStorage.setItem(STORAGE_KEY, remote.current.json); } catch { /* Ignored: the next sync replaces it. */ }
+        setLoaded(loadDashboard());
+      }
+      setNotice({ message: 'That change wasn’t saved to your shared planner. Check your connection and try again.', warn: true });
+    });
   }
   const navigate = id => { window.location.hash = id; };
   const addEntry = () => setModal({ kind: 'entry', date: active === 'budget' && month !== localDate().slice(0, 7) ? month + '-01' : localDate() });
   const edit = item => setModal({ kind: 'entry', item });
   const remove = item => setModal({ kind: 'delete-entry', item });
+  const me = PEOPLE.find(person => person.id === session.me);
+  if (cloudOn && session.status !== 'ready') {
+    return <div className="app-shell" style={accentStyles(state.accentColor)}>
+      <AccountGate session={session} signIn={(email, password) => backend.current.signIn(email, password)} signOut={signOut} chooseProfile={chooseProfile}/>
+    </div>;
+  }
   return <div className="app-shell" style={accentStyles(state.accentColor)}>
     <aside className="sidebar">
       <a href="#dashboard" className="brand"><span className="brand-mark"><Sprout size={21} strokeWidth={2.3}/></span><span>Our Little Life<small>Long &amp; Mei</small></span></a>
       <nav aria-label="Main navigation">{views.map(({ id, name, icon: Icon }) => <a key={id} href={`#${id}`} aria-current={active === id ? 'page' : undefined} className={active === id ? 'active' : ''}><Icon size={19}/><span>{name}</span></a>)}</nav>
       <div className="side-bottom">
-        <div className="side-profiles"><PlantPair mini/><span>Long &amp; Mei<small>Two profiles</small></span></div>
-        <div className="local-status"><span/> Saved on this device</div>
+        <div className="side-profiles"><PlantPair mini/><span>{me ? me.name : <>Long &amp; Mei</>}<small>{me ? 'Signed in' : 'Two profiles'}</small></span></div>
+        <div className={cloudOn && !session.synced ? 'local-status offline' : 'local-status'}><span/> {!cloudOn ? 'Saved on this device' : session.synced ? 'Synced across your devices' : 'Offline'}</div>
       </div>
     </aside>
     <main className="main-content" id="main">
@@ -135,11 +204,11 @@ function App() {
         {active === 'calendar' && <CalendarView state={state} open={setModal} month={calendarMonth} setMonth={setCalendarMonth} selected={selectedDay} setSelected={setSelectedDay}/>}
         {active === 'savings' && <Savings {...{ state, totals, edit, remove }} open={setModal}/>}
         {active === 'debts' && <DebtTracker debts={state.debts} open={setModal}/>}
-        {active === 'settings' && <><Settings key={state.accentColor} accent={state.accentColor} save={save}/><TreeSettings key={state.tree.kind + state.tree.perMeter} tree={state.tree} save={save}/></>}
+        {active === 'settings' && <>{cloudOn && <AccountCard session={session} signOut={signOut}/>}<Settings key={state.accentColor} accent={state.accentColor} save={save}/><TreeSettings key={state.tree.kind + state.tree.perMeter} tree={state.tree} save={save}/></>}
       </div>
     </main>
-    {modal && <Dialogs key={modal.kind + (modal.item?.id ?? '')} {...{ modal, state, totals, save }} close={() => setModal(null)} onEventSaved={date => { setSelectedDay(date); setCalendarMonth(date.slice(0, 7)); }}/>}
-    {notice && <div className="toast" role="status"><CircleCheck size={18}/>{notice.message}</div>}
+    {modal && <Dialogs key={modal.kind + (modal.item?.id ?? '')} {...{ modal, state, totals, save }} me={session.me} close={() => setModal(null)} onEventSaved={date => { setSelectedDay(date); setCalendarMonth(date.slice(0, 7)); }}/>}
+    {notice && <div className={notice.warn ? 'toast warn' : 'toast'} role="status">{notice.warn ? <CircleAlert size={18}/> : <CircleCheck size={18}/>}{notice.message}</div>}
   </div>;
 }
 

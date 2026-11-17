@@ -33,3 +33,23 @@ Open the localhost URL shown in the terminal. Edit files in `src`. The productio
 This version stores its records in ordinary browser localStorage. Each browser and website origin has its own copy. The Long and Mei profiles categorize contributions within that copy. Clearing site storage erases its data.
 
 The dashboard uses a new storage key. It leaves data in the earlier encrypted planner untouched and does not import those records. Export or back up the earlier planner before deploying this version if you need to retain access to those records.
+
+## Login and syncing (optional)
+
+With `src/firebase-config.js` left as `null`, the planner works as described above: no login, data in this browser only.
+
+To sign in as Long or Mei and sync between devices, create a Firebase project with Email/Password sign-in, two users, and a Firestore database, then paste the project's `firebaseConfig` object into `src/firebase-config.js`. The whole planner is stored in one Firestore document, `planner/shared`. Use these Firestore rules, with your two emails:
+
+```
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /planner/{document} {
+      allow read, write: if request.auth != null
+        && request.auth.token.email in ['YOUR-EMAIL', 'MEI-EMAIL'];
+    }
+  }
+}
+```
+
+The first account to sign in uploads that browser's planner as the shared copy. After that, every device shows the shared copy, and each account is linked once to the Long or Mei profile. Saving needs a connection.
