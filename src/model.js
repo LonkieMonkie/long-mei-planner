@@ -104,11 +104,17 @@ export function incomeSplits(raw, amount, state) {
     if (!Number.isInteger(rate) || rate < 0 || rate > 10_000) throw new Error(`Enter a share from 0% to 100% for ${category.name}.`);
     seen.add(categoryId);
     if (!rate) continue;
-    const split = { categoryId, rate, amount: contribution(amount, rate) };
+    const split = { categoryId, rate, amount: Math.floor(amount * rate / 10_000) };
     if (categoryId === WEDDING_CATEGORY_ID && state.goals.some(goal => goal.id === WEDDING_GOAL_ID)) split.goalId = WEDDING_GOAL_ID;
     splits.push(split);
   }
-  if (splits.reduce((sum, split) => sum + split.rate, 0) > 10_000) throw new Error('The ticked shares add up to more than 100%. Lower one before saving.');
+  // A split must account for the whole amount; nothing ticked means no split at all.
+  const total = splits.reduce((sum, split) => sum + split.rate, 0);
+  if (splits.length && total !== 10_000) throw new Error(`The ticked shares add up to ${total / 100}%. They need to add up to exactly 100%.`);
+  // Hand out the leftover cents from rounding down, largest fraction first, so the shares sum to the amount.
+  let left = amount - splits.reduce((sum, split) => sum + split.amount, 0);
+  const byFraction = [...splits].sort((a, b) => (amount * b.rate % 10_000) - (amount * a.rate % 10_000));
+  for (let i = 0; left > 0 && splits.length; i = (i + 1) % splits.length, left--) byFraction[i].amount++;
   return splits;
 }
 

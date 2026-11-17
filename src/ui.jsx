@@ -33,7 +33,7 @@ export function Modal({ title, children, close }) {
   </dialog>;
 }
 
-export function ActionForm({ children, onSave, label = 'Save', cancel }) {
+export function ActionForm({ children, onSave, label = 'Save', cancel, disabled = false }) {
   const [error, setError] = useState('');
   function submit(event) {
     event.preventDefault();
@@ -44,7 +44,7 @@ export function ActionForm({ children, onSave, label = 'Save', cancel }) {
   return <form className="form-stack" onSubmit={submit}>
     {children}
     {error && <p className="form-error" role="alert">{error}</p>}
-    <div className="form-actions">{cancel && <button type="button" className="btn secondary" onClick={cancel}>Cancel</button>}<button className="btn primary">{label}</button></div>
+    <div className="form-actions">{cancel && <button type="button" className="btn secondary" onClick={cancel}>Cancel</button>}<button className="btn primary" disabled={disabled}>{label}</button></div>
   </form>;
 }
 

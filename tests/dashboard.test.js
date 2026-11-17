@@ -229,9 +229,10 @@ test('income can be saved without a source and is labelled Income', () => {
 
 test('income splits fund that month\'s budgets and send only Wedding\'s share to joint savings', () => {
   const state = freshData();
-  const splits = JSON.stringify([{ categoryId: 'dining', rate: 2000 }, { categoryId: 'wedding', rate: 1000 }, { categoryId: 'bills', rate: 0 }]);
+  const splits = JSON.stringify([{ categoryId: 'dining', rate: 2000 }, { categoryId: 'wedding', rate: 1000 }, { categoryId: 'essentials', rate: 7000 }, { categoryId: 'bills', rate: 0 }]);
   const entry = entryFromFields(fields({ type: 'income', amount: '100.05', source: '', splits }), state);
-  assert.deepEqual(entry.splits, [{ categoryId: 'dining', rate: 2000, amount: 2001 }, { categoryId: 'wedding', rate: 1000, amount: 1001, goalId: 'wedding' }]);
+  assert.deepEqual(entry.splits, [{ categoryId: 'dining', rate: 2000, amount: 2001 }, { categoryId: 'wedding', rate: 1000, amount: 1001, goalId: 'wedding' }, { categoryId: 'essentials', rate: 7000, amount: 7003 }]);
+  assert.equal(entry.splits.reduce((sum, split) => sum + split.amount, 0), 10_005);
   state.entries = [entry];
   const totals = summarize(state, entry.date.slice(0, 7));
   assert.equal(totals.fundedByCategory.get('dining'), 2001);
@@ -240,7 +241,8 @@ test('income splits fund that month\'s budgets and send only Wedding\'s share to
   assert.equal(totals.jointBalance, 1001);
   assert.equal(totals.spent, 0);
   assert.equal(summarize(state, '2020-01').fundedByCategory.size, 0);
-  assert.throws(() => entryFromFields(fields({ type: 'income', splits: JSON.stringify([{ categoryId: 'dining', rate: 6000 }, { categoryId: 'bills', rate: 5000 }]) }), state), /more than 100%/);
+  assert.throws(() => entryFromFields(fields({ type: 'income', splits: JSON.stringify([{ categoryId: 'dining', rate: 6000 }, { categoryId: 'bills', rate: 5000 }]) }), state), /add up to 110%/);
+  assert.throws(() => entryFromFields(fields({ type: 'income', splits: JSON.stringify([{ categoryId: 'dining', rate: 3000 }]) }), state), /add up to 30%/);
   assert.equal('splits' in entryFromFields(fields({ type: 'income', splits: '[]' }), state), false);
   const saved = readState({ getItem: () => JSON.stringify({ ...state, categories: state.categories.map(c => c.id === 'dining' ? { ...c, incomeShares: { long: 2000, mei: -5 } } : c) }) });
   assert.deepEqual(saved.categories.find(c => c.id === 'dining').incomeShares, { long: 2000 });
