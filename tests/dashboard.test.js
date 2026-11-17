@@ -229,7 +229,7 @@ test('income can be saved without a source and is labelled Income', () => {
 
 test('income splits fund that month\'s budgets and send only Wedding\'s share to joint savings', () => {
   const state = freshData();
-  const splits = JSON.stringify([{ categoryId: 'dining', rate: 2000 }, { categoryId: 'wedding', rate: 1000 }, { categoryId: 'essentials', rate: 7000 }, { categoryId: 'bills', rate: 0 }]);
+  const splits = JSON.stringify([{ categoryId: 'dining', rate: 2000 }, { categoryId: 'wedding', rate: 1000 }, { categoryId: 'essentials', rate: 7000 }, { categoryId: 'bills', rate: 0 }, { categoryId: 'personal', rate: 5000 }]);
   const entry = entryFromFields(fields({ type: 'income', amount: '100.05', source: '', splits }), state);
   assert.deepEqual(entry.splits, [{ categoryId: 'dining', rate: 2000, amount: 2001 }, { categoryId: 'wedding', rate: 1000, amount: 1001, goalId: 'wedding' }, { categoryId: 'essentials', rate: 7000, amount: 7003 }]);
   assert.equal(entry.splits.reduce((sum, split) => sum + split.amount, 0), 10_005);
@@ -242,8 +242,27 @@ test('income splits fund that month\'s budgets and send only Wedding\'s share to
   assert.equal(totals.spent, 0);
   assert.equal(summarize(state, '2020-01').fundedByCategory.size, 0);
   assert.throws(() => entryFromFields(fields({ type: 'income', splits: JSON.stringify([{ categoryId: 'dining', rate: 6000 }, { categoryId: 'bills', rate: 5000 }]) }), state), /add up to 110%/);
-  assert.throws(() => entryFromFields(fields({ type: 'income', splits: JSON.stringify([{ categoryId: 'dining', rate: 3000 }]) }), state), /add up to 30%/);
-  assert.equal('splits' in entryFromFields(fields({ type: 'income', splits: '[]' }), state), false);
+  // Under 100%, the rest goes to Personal; nothing ticked sends it all there.
+  const partial = entryFromFields(fields({ type: 'income', amount: '100', splits: JSON.stringify([{ categoryId: 'dining', rate: 3000 }]) }), state);
+  assert.deepEqual(partial.splits, [{ categoryId: 'dining', rate: 3000, amount: 3000 }, { categoryId: 'personal', rate: 7000, amount: 7000 }]);
+  assert.deepEqual(entryFromFields(fields({ type: 'income', amount: '10', splits: '[]' }), state).splits, [{ categoryId: 'personal', rate: 10_000, amount: 1000 }]);
+  state.entries = [entry, partial];
+  assert.equal(summarize(state, entry.date.slice(0, 7)).people.long.personal, 7000);
   const saved = readState({ getItem: () => JSON.stringify({ ...state, categories: state.categories.map(c => c.id === 'dining' ? { ...c, incomeShares: { long: 2000, mei: -5 } } : c) }) });
   assert.deepEqual(saved.categories.find(c => c.id === 'dining').incomeShares, { long: 2000 });
+});
+
+test('Personal is a permanent category, and an existing Personal category becomes it', () => {
+  assert.ok(freshData().categories.some(category => category.id === 'personal'));
+  const state = freshData();
+  state.categories = state.categories.filter(category => category.id !== 'personal');
+  state.categories.push({ id: 'mine', name: ' personal ', limit: 20_000 });
+  state.entries = [{ ...entryFromFields(fields({ categoryId: 'mine' }), { ...state, categories: [...state.categories] }) }];
+  const read = readState({ getItem: () => JSON.stringify(state) });
+  const personal = read.categories.filter(category => category.id === 'personal');
+  assert.equal(personal.length, 1);
+  assert.equal(personal[0].name, 'Personal');
+  assert.equal(personal[0].limit, 20_000);
+  assert.equal(read.entries[0].categoryId, 'personal');
+  assert.equal(readState({ getItem: () => JSON.stringify(freshData()) }).categories.filter(category => category.id === 'personal').length, 1);
 });

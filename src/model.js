@@ -8,6 +8,9 @@ export const PEOPLE = [
   { id: 'mei', name: 'Mei', initials: 'M', tone: 'rose' },
 ];
 export const WEDDING_CATEGORY_ID = 'wedding';
+// Income that isn't split into other budgets goes here.
+export const PERSONAL_CATEGORY_ID = 'personal';
+const personalCategory = { id: PERSONAL_CATEGORY_ID, name: 'Personal', limit: 0, icon: 'heart', tone: 'blue' };
 const WEDDING_GOAL_ID = 'wedding';
 
 const weddingCategory = {
@@ -64,6 +67,13 @@ export const entryContribution = entry => goalShares(entry).reduce((sum, share) 
 export const categoryColors = { indigo: '#7964da', blue: '#5283c7', rose: '#bc5f88', mint: '#3c9676' };
 export const categoryColor = category => parseAccent(category.color) ?? categoryColors[category.tone] ?? DEFAULT_ACCENT;
 export const isWeddingName = name => name.trim().toLowerCase() === 'wedding';
+export const isPersonalName = name => name.trim().toLowerCase() === 'personal';
+export const isPermanentCategory = id => id === WEDDING_CATEGORY_ID || id === PERSONAL_CATEGORY_ID;
+export function reservedNameError(name) {
+  if (isWeddingName(name)) return 'Wedding is already a permanent category.';
+  if (isPersonalName(name)) return 'Personal is already a permanent category.';
+  return '';
+}
 
 export function freshData() {
   return {
@@ -74,6 +84,7 @@ export function freshData() {
       { id: 'transport', name: 'Transportation', limit: 0, icon: 'car', tone: 'blue' },
       { id: 'dining', name: 'Dining out', limit: 0, icon: 'utensils', tone: 'rose' },
       { id: 'bills', name: 'Bills & subscriptions', limit: 0, icon: 'receipt', tone: 'mint' },
+      { ...personalCategory },
     ],
     goals: [{ ...weddingGoal }],
     entries: [], events: [], debts: [],
@@ -100,7 +111,7 @@ export function incomeSplits(raw, amount, state) {
   const splits = [];
   for (const { categoryId, rate } of chosen) {
     const category = state.categories.find(item => item.id === categoryId);
-    if (!category || seen.has(categoryId)) continue;
+    if (!category || categoryId === PERSONAL_CATEGORY_ID || seen.has(categoryId)) continue;
     if (!Number.isInteger(rate) || rate < 0 || rate > 10_000) throw new Error(`Enter a share from 0% to 100% for ${category.name}.`);
     seen.add(categoryId);
     if (!rate) continue;
@@ -108,9 +119,10 @@ export function incomeSplits(raw, amount, state) {
     if (categoryId === WEDDING_CATEGORY_ID && state.goals.some(goal => goal.id === WEDDING_GOAL_ID)) split.goalId = WEDDING_GOAL_ID;
     splits.push(split);
   }
-  // A split must account for the whole amount; nothing ticked means no split at all.
+  // Ticked shares can't pass 100%; whatever they leave goes to Personal.
   const total = splits.reduce((sum, split) => sum + split.rate, 0);
-  if (splits.length && total !== 10_000) throw new Error(`The ticked shares add up to ${total / 100}%. They need to add up to exactly 100%.`);
+  if (total > 10_000) throw new Error(`The ticked shares add up to ${total / 100}%. Lower them to 100% or less.`);
+  if (total < 10_000) splits.push({ categoryId: PERSONAL_CATEGORY_ID, rate: 10_000 - total, amount: Math.floor(amount * (10_000 - total) / 10_000) });
   // Hand out the leftover cents from rounding down, largest fraction first, so the shares sum to the amount.
   let left = amount - splits.reduce((sum, split) => sum + split.amount, 0);
   const byFraction = [...splits].sort((a, b) => (amount * b.rate % 10_000) - (amount * a.rate % 10_000));
@@ -142,7 +154,7 @@ export function entryFromFields(fields, state, previous, now = new Date().toISOS
 }
 
 export function summarize(state, month) {
-  const people = Object.fromEntries(PEOPLE.map(p => [p.id, { income: 0, spent: 0, allocated: 0 }]));
+  const people = Object.fromEntries(PEOPLE.map(p => [p.id, { income: 0, spent: 0, allocated: 0, personal: 0 }]));
   const goals = Object.fromEntries(state.goals.map(g => [g.id, { total: 0, long: 0, mei: 0 }]));
   const spentByCategory = new Map();
   const fundedByCategory = new Map();
@@ -158,7 +170,10 @@ export function summarize(state, month) {
     }
     totalContributions += amount;
     if (month && !entry.date.startsWith(month + '-')) continue;
-    for (const split of entry.splits ?? []) fundedByCategory.set(split.categoryId, (fundedByCategory.get(split.categoryId) ?? 0) + split.amount);
+    for (const split of entry.splits ?? []) {
+      fundedByCategory.set(split.categoryId, (fundedByCategory.get(split.categoryId) ?? 0) + split.amount);
+      if (split.categoryId === PERSONAL_CATEGORY_ID) people[entry.personId].personal += split.amount;
+    }
     const person = people[entry.personId];
     if (entry.type === 'income') {
       income += entry.amount;
@@ -282,6 +297,15 @@ export function readState(storage) {
     state.entries = state.entries.map(entry => entry.categoryId === category.id ? { ...entry, categoryId: WEDDING_CATEGORY_ID } : entry);
   }
   if (!state.goals.some(goal => goal.id === WEDDING_GOAL_ID)) state.goals.unshift({ ...weddingGoal });
+  // Personal is permanent too. A category the couple already named Personal becomes it.
+  const named = state.categories.find(item => item.id === PERSONAL_CATEGORY_ID) ?? state.categories.find(item => isPersonalName(item.name));
+  if (!named) state.categories.push({ ...personalCategory });
+  else if (named.id !== PERSONAL_CATEGORY_ID) {
+    const oldId = named.id;
+    state.categories = state.categories.map(item => item === named ? { ...item, id: PERSONAL_CATEGORY_ID, name: personalCategory.name } : item);
+    state.entries = state.entries.map(entry => ({ ...entry, ...(entry.categoryId === oldId ? { categoryId: PERSONAL_CATEGORY_ID } : {}),
+      ...(entry.splits ? { splits: entry.splits.map(split => split.categoryId === oldId ? { ...split, categoryId: PERSONAL_CATEGORY_ID } : split) } : {}) }));
+  } else named.name = personalCategory.name;
   // Automatic biweekly paydays were removed; repeating events replace them.
   delete state.firstPaydays;
   state.events = state.events.map(normalizeEvent);

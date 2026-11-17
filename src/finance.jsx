@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { ArrowDownLeft, ArrowDownRight, ArrowRight, CalendarDays, ChevronLeft, ChevronRight, CircleDollarSign, Clock3, Landmark, LockKeyhole, Pencil, PiggyBank, Plus, SlidersHorizontal, Target, TrendingUp, Wallet } from 'lucide-react';
 import { upcomingEvents } from './events.js';
 import { goalForecast } from './forecast.js';
-import { PEOPLE, WEDDING_CATEGORY_ID, categoryColor, dateFromKey, displayTime, isWeddingName, localDate, money, shiftMonth, shortDate } from './model.js';
+import { PEOPLE, categoryColor, dateFromKey, displayTime, isPermanentCategory, localDate, reservedNameError, money, shiftMonth, shortDate } from './model.js';
 import { PlantPair } from './plants.jsx';
 import { SavingsTree } from './tree.jsx';
 import { CATEGORY_ICONS, Empty, EntryHistory, InlineName, PanelHeading, Person, Progress } from './ui.jsx';
@@ -131,13 +131,13 @@ export function Budget({ state, totals, month, save, open, edit, remove }) {
       <div className="category-table">
         {state.categories.map(category => {
           const spent = totals.spentByCategory.get(category.id) ?? 0;
-          const wedding = category.id === WEDDING_CATEGORY_ID;
+          const permanent = isPermanentCategory(category.id);
           return <div className="category-row" key={category.id}>
             <CategoryIcon category={category} size={18}/>
             <div className="category-name">
-              {wedding ? <span className="rename"><strong>Wedding</strong><LockKeyhole size={13} aria-label="Permanent category"/></span>
+              {permanent ? <span className="rename"><strong>{category.name}</strong><LockKeyhole size={13} aria-label="Permanent category"/></span>
                 : <InlineName name={category.name} save={name => {
-                  if (isWeddingName(name)) throw new Error('Wedding is already a permanent category.');
+                  if (reservedNameError(name)) throw new Error(reservedNameError(name));
                   save(current => ({ ...current, categories: current.categories.map(item => item.id === category.id ? { ...item, name } : item) }), 'Category renamed');
                 }}/>}
               <div className="category-rates"><span>Savings: {PEOPLE.map(person => `${person.name} ${(category.savingsRates?.[person.id] ?? 0) / 100}%`).join(' · ')}</span>
@@ -158,7 +158,7 @@ export function Budget({ state, totals, month, save, open, edit, remove }) {
         const amounts = totals.people[person.id];
         return <section className="card profile-card" key={person.id}>
           <PanelHeading title={person.name + '’s monthly activity'} action={<Person id={person.id} onlyAvatar/>}/>
-          <dl><div><dt>Income</dt><dd>{money(amounts.income)}</dd></div><div><dt>Spent</dt><dd>{money(amounts.spent)}</dd></div><div><dt>To joint goals</dt><dd>{money(amounts.allocated)}</dd></div></dl>
+          <dl><div><dt>Income</dt><dd>{money(amounts.income)}</dd></div><div><dt>Spent</dt><dd>{money(amounts.spent)}</dd></div><div><dt>To joint goals</dt><dd>{money(amounts.allocated)}</dd></div><div><dt>Personal</dt><dd>{money(amounts.personal)}</dd></div></dl>
         </section>;
       })}
     </div>

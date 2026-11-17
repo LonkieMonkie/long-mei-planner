@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { DEFAULT_ACCENT, parseAccent } from './appearance.js';
-import { PEOPLE, WEDDING_CATEGORY_ID, categoryColor, decimalUnits, isWeddingName } from './model.js';
+import { PEOPLE, PERSONAL_CATEGORY_ID, WEDDING_CATEGORY_ID, categoryColor, decimalUnits, reservedNameError } from './model.js';
 import { ActionForm } from './ui.jsx';
 
 function toHsv(hex) {
@@ -83,9 +83,10 @@ export function CategoryForm({ item, state, done, close }) {
     if (!color) throw new Error('Enter a six-digit hex color.');
     const name = fields.name?.trim();
     if (!item && !name) throw new Error('Enter a category name.');
-    if (!item && isWeddingName(name)) throw new Error('Wedding is already a permanent category.');
+    if (!item && reservedNameError(name)) throw new Error(reservedNameError(name));
     const savingsRates = Object.fromEntries(PEOPLE.map(({ id }) => [id, decimalUnits(fields[id] || '0', 10_000)]));
-    const incomeShares = Object.fromEntries(PEOPLE.map(({ id }) => [id, decimalUnits(fields['share-' + id] || '0', 10_000)]));
+    const personal = item?.id === PERSONAL_CATEGORY_ID;
+    const incomeShares = personal ? undefined : Object.fromEntries(PEOPLE.map(({ id }) => [id, decimalUnits(fields['share-' + id] || '0', 10_000)]));
     const update = { color, savingsRates, incomeShares, savingsGoalId: wedding ? item.savingsGoalId : fields.savingsGoalId };
     done(current => ({
       ...current,
@@ -99,9 +100,10 @@ export function CategoryForm({ item, state, done, close }) {
     <div className="form-row">{PEOPLE.map(person => <label key={person.id}>{person.name} savings (%)
       <input type="number" name={person.id} min="0" max="100" step="0.01" defaultValue={(item?.savingsRates?.[person.id] ?? 0) / 100}/>
     </label>)}</div>
-    <div className="form-row">{PEOPLE.map(person => <label key={person.id}>{person.name} share of income (%)
+    {item?.id === PERSONAL_CATEGORY_ID ? <p className="field-help">Personal is permanent. It receives whatever share of each income isn’t ticked for other budgets.</p>
+      : <div className="form-row">{PEOPLE.map(person => <label key={person.id}>{person.name} share of income (%)
       <input type="number" name={'share-' + person.id} min="0" max="100" step="0.01" defaultValue={(item?.incomeShares?.[person.id] ?? 0) / 100}/>
-    </label>)}</div>
+    </label>)}</div>}
     {wedding ? <p className="field-help">Wedding is permanent and adds to the Wedding goal in Joint Savings.</p> : <label>Joint savings goal<select name="savingsGoalId" defaultValue={item?.savingsGoalId || state.goals[0]?.id}>
       {state.goals.map(goal => <option key={goal.id} value={goal.id}>{goal.name}</option>)}
     </select></label>}

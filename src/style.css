@@ -154,7 +154,7 @@ button.primary:hover { background: var(--accent-deep); }
   pointer-events: none;
 }
 .profile-grid, .savings-layout { @apply grid gap-5; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.profile-card dl { @apply grid grid-cols-3 gap-2 text-center; }.profile-card dl > div { @apply rounded-lg bg-canvas px-2 py-2.5; }
+.profile-card dl { @apply grid grid-cols-4 gap-2 text-center; }.profile-card dl > div { @apply rounded-lg bg-canvas px-2 py-2.5; }
 .profile-card dt { @apply text-[11px] text-muted; }.profile-card dd { @apply mt-1 break-all text-sm font-semibold tabular-nums; }
 .table-scroll { overflow-x: auto; }
 .history-table { @apply w-full border-collapse text-left text-xs; }
@@ -327,6 +327,10 @@ button.secondary:active { box-shadow: 0 1px 0 var(--color-line); }
 .split-total strong { color: var(--color-ink); }
 .split-total.over { color: #a5254a; font-weight: 600; }
 .split-total.done { color: #1f6b4c; }
+.split-row.personal { margin-top: 4px; border: 1.5px dashed var(--accent-border); background: var(--color-paper); }
+.split-row.personal small { font-size: 11px; font-weight: 500; color: var(--color-muted); }
+.split-lock { width: 17px; flex-shrink: 0; }
+.split-rest { display: inline-block; width: 70px; padding-right: 9px; text-align: right; font-weight: 700; }
 .split-total.done strong { color: #1f6b4c; }
 .delete-choices { display: grid; gap: 8px; }
 .danger-text { color: #a5254a; }
