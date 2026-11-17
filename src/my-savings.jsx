@@ -7,7 +7,7 @@ import { Empty, PanelHeading } from './ui.jsx';
 const kinds = {
   in: { label: 'Added', tone: 'mint', Icon: ArrowDownLeft },
   out: { label: 'Taken out', tone: 'rose', Icon: ArrowUpRight },
-  income: { label: 'Personal share of income', tone: 'indigo', Icon: Wallet },
+  income: { label: 'Saved from income', tone: 'indigo', Icon: Wallet },
 };
 
 export function MySavings({ state, me, open, editEntry }) {
@@ -32,7 +32,7 @@ export function MySavings({ state, me, open, editEntry }) {
         <PanelHeading title="How it adds up" subtitle="Your savings are separate from Joint Savings."/>
         <ul className="savings-explainer">
           <li><b>Add money</b> or <b>Take out</b> here at any time.</li>
-          <li>When you split income, the part left for <b>Personal</b> is added here automatically.</li>
+          <li>When you add income, tick <b>My savings</b> in the split and its share is added here.</li>
           <li>Deposits toward the Wedding stay in Joint Savings.</li>
         </ul>
       </section>

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ArrowDownLeft, ArrowUpRight, PiggyBank } from 'lucide-react';
-import { PEOPLE, PERSONAL_CATEGORY_ID, WEDDING_CATEGORY_ID, categoryColor, dateFromKey, contribution, debtFromFields, decimalUnits, entryContribution, entryFromFields, incomeSplits, entryTime, localDate, localTime, money, shortDate, savingsRule, setJointBalance, settleDebt } from './model.js';
+import { PEOPLE, PERSONAL_CATEGORY_ID, SAVINGS_CATEGORY_ID, WEDDING_CATEGORY_ID, categoryColor, dateFromKey, contribution, debtFromFields, decimalUnits, entryContribution, entryFromFields, incomeSplits, entryTime, localDate, localTime, money, shortDate, savingsRule, setJointBalance, settleDebt } from './model.js';
 import { ActionForm, Modal } from './ui.jsx';
 import { CategoryForm } from './category-form.jsx';
 import { REPEATS, deleteEvent, editEvent, eventFromFields, occurrenceIndex } from './events.js';
@@ -92,6 +92,8 @@ function shareRates(state, shares) {
   }));
 }
 
+const SPLIT_TAGS = { [WEDDING_CATEGORY_ID]: 'to Joint Savings', [SAVINGS_CATEGORY_ID]: 'to My Savings' };
+
 function IncomeSplit({ state, shares, setShares, units, person }) {
   const set = (id, change) => setShares(current => ({ ...current, [id]: { ...current[id], ...change } }));
   let total = 0, totalRate = 0;
@@ -114,10 +116,10 @@ function IncomeSplit({ state, shares, setShares, units, person }) {
   }
   return <fieldset className="income-split">
     <legend>Split into budgets</legend>
-    <p className="field-help">Tick budgets to set their share aside for this month. Whatever isn’t ticked goes to Personal. Wedding’s share also adds to joint savings. Percentages are saved for {person.name}.</p>
+    <p className="field-help">Tick budgets to set their share aside for this month. Whatever isn’t ticked goes to Personal. Percentages are saved for {person.name}.</p>
     <div className="split-rows">{rows.map(({ category, rate, on, amount }) => <div className={on ? 'split-row on' : 'split-row'} key={category.id}>
       <label className="split-check"><input type="checkbox" checked={Boolean(on)} onChange={e => set(category.id, { on: e.target.checked })}/>
-        <span className="color-dot" style={{ backgroundColor: categoryColor(category) }}/>{category.name}</label>
+        <span className="color-dot" style={{ backgroundColor: categoryColor(category) }}/>{category.name}{SPLIT_TAGS[category.id] && <small className="split-tag">{SPLIT_TAGS[category.id]}</small>}</label>
       <label className="split-pct"><input type="number" min="0" max="100" step="0.01" inputMode="decimal" aria-label={`${category.name} share of income (%)`} aria-invalid={rate === null}
         value={shares[category.id]?.pct ?? '0'} onChange={e => set(category.id, { pct: e.target.value, on: e.target.value !== '' && Number(e.target.value) > 0 ? true : on })}/>%</label>
       <strong className="split-amount">{on ? money(amount) : '—'}</strong>

@@ -13,7 +13,9 @@ import { PlantPair } from './plants.jsx';
 import { PEOPLE, STORAGE_KEY, categoryColor, entryContribution, entryTime, goalShares, freshData, localDate, readState, summarize } from './model.js';
 import { workbook } from './excel.js';
 import { repeatSummary } from './events.js';
-import { AccountCard, AccountGate } from './account.jsx';
+import { AccountCard, AccountGate, ProfilePictureCard } from './account.jsx';
+import { AVATAR_KEY, cleanAvatars, readLocalAvatars } from './avatars.js';
+import { Avatar, AvatarContext } from './ui.jsx';
 import { connect } from './cloud.js';
 import { firebaseConfig } from './firebase-config.js';
 import './style.css';
@@ -23,7 +25,7 @@ const views = [
   { id: 'budget', name: 'Budget', icon: Wallet, subtitle: 'Track income, spending and savings for each of you.' },
   { id: 'calendar', name: 'Calendar', icon: CalendarDays, subtitle: 'See your events, budget entries, deposits and debt payments.' },
   { id: 'savings', name: 'Joint Savings', icon: PiggyBank, subtitle: 'See what each of you has put toward your shared goals.' },
-  { id: 'my-savings', name: 'My Savings', icon: HandCoins, subtitle: 'Your own savings: money you add or take out, plus the Personal share of your income.' },
+  { id: 'my-savings', name: 'My Savings', icon: HandCoins, subtitle: 'Your own savings: money you add or take out, plus what you save from income.' },
   { id: 'debts', name: 'Debt Tracker', icon: Scale, subtitle: 'Track what you owe each other and record payments.' },
   { id: 'settings', name: 'Settings', icon: SettingsIcon, subtitle: 'Personalize your dashboard and export your records.' },
 ];
@@ -63,7 +65,7 @@ function exportExcel(state, totals) {
     { name: 'Personal savings', rows: [
       ['Profile', 'Date', 'Time', 'Type', 'Note', 'Amount (USD)'],
       ...PEOPLE.flatMap(person => personalSavings(state, person.id).rows.map(row => [person.name, row.date, row.time,
-        row.kind === 'income' ? 'Personal share of income' : row.amount < 0 ? 'Taken out' : 'Added', row.note, row.amount / 100])),
+        row.kind === 'income' ? 'Saved from income' : row.amount < 0 ? 'Taken out' : 'Added', row.note, row.amount / 100])),
     ] },
     { name: 'Events', rows: [
       ['Title', 'Date', 'Time', 'Repeats', 'Description'], ...state.events.map(event => [event.title, event.date, event.time, repeatSummary(event), event.description]),
@@ -115,12 +117,13 @@ function App() {
 
   // Login and syncing, active only when a Firebase project is configured.
   const cloudOn = Boolean(firebaseConfig);
+  const [avatars, setAvatars] = useState(() => cloudOn ? {} : readLocalAvatars(localStorage));
   const [session, setSession] = useState({ status: cloudOn ? 'loading' : 'local', user: null, me: null, taken: [], synced: false, error: '' });
   const backend = useRef(null);
   const remote = useRef(null);
   useEffect(() => {
     if (!cloudOn) return;
-    let stopUser = () => {}, stopData = () => {}, cancelled = false;
+    let stopUser = () => {}, stopData = () => {}, stopAvatars = () => {}, cancelled = false;
     const fail = error => setSession(current => ({ ...current, status: 'error', error: error.code === 'permission-denied'
       ? 'This account isn’t allowed to open the planner. Check the two emails in your Firebase rules.'
       : 'The shared planner couldn’t be reached. Check your connection and try again.' }));
@@ -128,9 +131,11 @@ function App() {
       if (cancelled) return;
       backend.current = api;
       stopUser = api.onUser(user => {
-        stopData(); stopData = () => {}; remote.current = null;
+        stopData(); stopData = () => {}; stopAvatars(); stopAvatars = () => {}; remote.current = null;
         if (!user) { setSession(current => ({ ...current, status: 'signed-out', user: null, me: null })); return; }
         setSession(current => ({ ...current, status: 'loading', user }));
+        // Pictures are optional: if they can't load, the initials stay.
+        stopAvatars = api.subscribeAvatars(data => setAvatars(cleanAvatars(data)), () => {});
         stopData = api.subscribe((data, fromCache) => {
           if (!data && fromCache) return; // Offline with nothing cached: wait for the server's answer.
           if (!data) {
@@ -151,9 +156,20 @@ function App() {
         }, fail);
       });
     }).catch(fail);
-    return () => { cancelled = true; stopUser(); stopData(); };
+    return () => { cancelled = true; stopUser(); stopData(); stopAvatars(); };
   }, []);
   const signOut = () => backend.current.signOut();
+  async function setAvatar(personId, url) {
+    if (cloudOn) {
+      if (!navigator.onLine) throw new Error('You’re offline. Reconnect to change your picture.');
+      await backend.current.setAvatar(personId, url);
+      return;
+    }
+    const next = { ...avatars, [personId]: url };
+    if (!url) delete next[personId];
+    try { localStorage.setItem(AVATAR_KEY, JSON.stringify(next)); } catch { throw new Error('This browser is out of storage space for pictures.'); }
+    setAvatars(next);
+  }
   const chooseProfile = personId => backend.current.transact(current => {
     if (Object.values(current.profiles ?? {}).includes(personId)) throw new Error('That profile is already linked to the other account.');
     return { ...current, profiles: { ...current.profiles, [session.user.uid]: personId } };
@@ -196,7 +212,7 @@ function App() {
       <AccountGate session={session} signIn={(email, password, remember) => backend.current.signIn(email, password, remember)} resetPassword={email => backend.current.resetPassword(email)} signOut={signOut} chooseProfile={chooseProfile}/>
     </div>;
   }
-  return <div className={expanded ? 'app-shell' : 'app-shell sidebar-collapsed'} style={accentStyles(state.accentColor)}>
+  return <AvatarContext.Provider value={avatars}><div className={expanded ? 'app-shell' : 'app-shell sidebar-collapsed'} style={accentStyles(state.accentColor)}>
     <aside className="sidebar">
       <button className="sidebar-toggle" onClick={toggleSidebar} aria-expanded={expanded} aria-label={expanded ? 'Collapse sidebar' : 'Expand sidebar'} title={expanded ? 'Collapse sidebar' : 'Expand sidebar'}>
         {expanded ? <ChevronLeft size={16}/> : <ChevronRight size={16}/>}
@@ -204,7 +220,7 @@ function App() {
       <a href="#dashboard" className="brand"><span className="brand-mark"><Sprout size={21} strokeWidth={2.3}/></span><span>Our Little Life<small>Long &amp; Mei</small></span></a>
       <nav aria-label="Main navigation">{views.map(({ id, name, icon: Icon }) => <a key={id} href={`#${id}`} title={expanded ? undefined : name} aria-current={active === id ? 'page' : undefined} className={active === id ? 'active' : ''}><Icon size={19}/><span>{name}</span></a>)}</nav>
       <div className="side-bottom">
-        <div className="side-profiles"><PlantPair mini/><span>{me ? me.name : <>Long &amp; Mei</>}<small>{me ? 'Signed in' : 'Two profiles'}</small></span></div>
+        <div className="side-profiles">{me && avatars[me.id] ? <Avatar id={me.id} className="side-avatar"/> : <PlantPair mini/>}<span>{me ? me.name : <>Long &amp; Mei</>}<small>{me ? 'Signed in' : 'Two profiles'}</small></span></div>
         <div className={cloudOn && !session.synced ? 'local-status offline' : 'local-status'}><span/> {!cloudOn ? 'Saved on this device' : session.synced ? 'Synced across your devices' : 'Offline'}</div>
       </div>
     </aside>
@@ -226,12 +242,12 @@ function App() {
         {active === 'savings' && <Savings {...{ state, totals, edit, remove }} open={setModal}/>}
         {active === 'my-savings' && <MySavings state={state} me={session.me} open={setModal} editEntry={edit}/>}
         {active === 'debts' && <DebtTracker debts={state.debts} open={setModal}/>}
-        {active === 'settings' && <>{cloudOn && <AccountCard session={session} signOut={signOut}/>}<Settings key={state.accentColor} accent={state.accentColor} save={save}/><TreeSettings key={state.tree.kind + state.tree.perMeter} tree={state.tree} save={save}/><ExportCard onExport={() => exportExcel(state, totals)}/><VersionCard/></>}
+        {active === 'settings' && <>{cloudOn && <AccountCard session={session} signOut={signOut}/>}<ProfilePictureCard me={session.me} avatars={avatars} setAvatar={setAvatar} notify={message => setNotice({ message })}/><Settings key={state.accentColor} accent={state.accentColor} save={save}/><TreeSettings key={state.tree.kind + state.tree.perMeter} tree={state.tree} save={save}/><ExportCard onExport={() => exportExcel(state, totals)}/><VersionCard/></>}
       </div>
     </main>
     {modal && <Dialogs key={modal.kind + (modal.item?.id ?? '')} {...{ modal, state, totals, save }} me={session.me} close={() => setModal(null)} onEventSaved={date => { setSelectedDay(date); setCalendarMonth(date.slice(0, 7)); }}/>}
     {notice && <div className={notice.warn ? 'toast warn' : 'toast'} role="status">{notice.warn ? <CircleAlert size={18}/> : <CircleCheck size={18}/>}{notice.message}</div>}
-  </div>;
+  </div></AvatarContext.Provider>;
 }
 
 createRoot(document.getElementById('root')).render(<App/>);

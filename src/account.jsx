@@ -1,8 +1,9 @@
 import { useRef, useState } from 'react';
-import { LogOut } from 'lucide-react';
+import { Camera, LogOut, Trash2 } from 'lucide-react';
+import { imageToAvatar } from './avatars.js';
 import { PEOPLE } from './model.js';
 import { Plant, PlantPair } from './plants.jsx';
-import { PanelHeading } from './ui.jsx';
+import { Avatar, PanelHeading } from './ui.jsx';
 
 const signInErrors = {
   'auth/invalid-credential': 'That email and password don’t match.',
@@ -68,4 +69,37 @@ export function AccountCard({ session, signOut }) {
       action={<button className="btn secondary" onClick={signOut}><LogOut size={15}/> Sign out</button>}/>
     <p className="field-help">{session.synced ? 'Your planner is synced. Changes appear on your other devices within a few seconds.' : 'You’re offline. The planner shows the last synced copy, and changes can’t be saved until you reconnect.'}</p>
   </section>;
+}
+
+// Signed in, each of you sets your own picture; without sign-in, both can be set here.
+export function ProfilePictureCard({ me, avatars, setAvatar, notify }) {
+  const people = me ? PEOPLE.filter(person => person.id === me) : PEOPLE;
+  return <section className="card settings-card">
+    <PanelHeading title={me ? 'Profile picture' : 'Profile pictures'} subtitle="Shown wherever your initials appear, on every device. Square photos work best."/>
+    <div className="picture-list">{people.map(person => <PictureRow key={person.id} person={person} has={Boolean(avatars[person.id])} setAvatar={setAvatar} notify={notify}/>)}</div>
+  </section>;
+}
+
+function PictureRow({ person, has, setAvatar, notify }) {
+  const input = useRef(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  async function run(task, message) {
+    setBusy(true); setError('');
+    try { await task(); notify(message); } catch (e) { setError(e.message); } finally { setBusy(false); }
+  }
+  return <div className="picture-row">
+    <Avatar id={person.id} className="avatar-large"/>
+    <div className="picture-copy"><strong>{person.name}</strong><small>{has ? 'Photo set' : 'Showing initials'}</small>
+      {error && <p className="form-error" role="alert">{error}</p>}</div>
+    <div className="picture-actions">
+      <input ref={input} type="file" accept="image/*" hidden onChange={e => {
+        const file = e.target.files?.[0];
+        e.target.value = '';
+        if (file) run(async () => setAvatar(person.id, await imageToAvatar(file)), 'Profile picture updated');
+      }}/>
+      <button className="btn secondary" disabled={busy} onClick={() => input.current.click()}><Camera size={15}/> {busy ? 'Saving' : has ? 'Change photo' : 'Upload photo'}</button>
+      {has && <button className="btn secondary danger-text" disabled={busy} onClick={() => run(() => setAvatar(person.id, null), 'Profile picture removed')}><Trash2 size={15}/> Remove</button>}
+    </div>
+  </div>;
 }

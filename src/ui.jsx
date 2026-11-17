@@ -1,12 +1,22 @@
-import { useEffect, useRef, useState } from 'react';
-import { ArrowDownLeft, ArrowUpRight, Car, Heart, Pencil, Receipt, ShoppingBasket, Tag, Trash2, Utensils, X } from 'lucide-react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { ArrowDownLeft, ArrowUpRight, Car, Heart, Pencil, PiggyBank, Receipt, ShoppingBasket, Tag, Trash2, Utensils, X } from 'lucide-react';
 import { PEOPLE, categoryColor, entryContribution, goalShares, money, shortDate, timestamp } from './model.js';
 
-export const CATEGORY_ICONS = { basket: ShoppingBasket, car: Car, heart: Heart, utensils: Utensils, receipt: Receipt, tag: Tag };
+export const CATEGORY_ICONS = { basket: ShoppingBasket, car: Car, heart: Heart, utensils: Utensils, receipt: Receipt, tag: Tag, piggy: PiggyBank };
+
+// Profile pictures by person id, provided by the app.
+export const AvatarContext = createContext({});
+
+export function Avatar({ id, className = '' }) {
+  const person = PEOPLE.find(p => p.id === id);
+  const photo = useContext(AvatarContext)[id];
+  return photo ? <img className={`avatar photo ${className}`} src={photo} alt={person.name}/>
+    : <span className={`avatar ${person.tone} ${className}`}>{person.initials}</span>;
+}
 
 export function Person({ id, onlyAvatar = false }) {
   const person = PEOPLE.find(p => p.id === id);
-  return <span className="person"><span className={`avatar ${person.tone}`}>{person.initials}</span>{!onlyAvatar && person.name}</span>;
+  return <span className="person"><Avatar id={id}/>{!onlyAvatar && person.name}</span>;
 }
 
 export function PanelHeading({ title, subtitle, action }) {

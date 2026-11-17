@@ -1,6 +1,11 @@
 // What changed in each release, newest first. Add an entry and bump "version" in
 // package.json together; a test checks that they match.
 export const CHANGELOG = [
+  { version: '2.9.0', date: '2026-11-17', changes: [
+    'New My savings budget category: tick it when splitting income and its share goes into My Savings.',
+    'The Personal remainder stays a budget set-aside and no longer counts as savings.',
+    'Profile pictures: set your own in Settings and it shows wherever your initials did.',
+  ] },
   { version: '2.8.0', date: '2026-11-17', changes: [
     'New My Savings tab: each of you can add money to or take money out of your own savings.',
     'The Personal share of a split income is added to your savings automatically.',

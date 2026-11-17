@@ -301,8 +301,10 @@ test('personal savings add deposits, withdrawals and the Personal share of incom
   assert.equal(deposit.note, 'Bonus');
   assert.equal(withdrawal.amount, -4050);
   assert.throws(() => savingsFromFields({ personId: 'long', date: '2026-11-12', time: '10:00', amount: '0' }));
-  const income = entryFromFields(fields({ type: 'income', personId: 'long', amount: '100', date: '2026-11-15', splits: JSON.stringify([{ categoryId: 'dining', rate: 2500 }]) }), state);
-  state.entries = [income];
+  const income = entryFromFields(fields({ type: 'income', personId: 'long', amount: '100', date: '2026-11-15', splits: JSON.stringify([{ categoryId: 'dining', rate: 2500 }, { categoryId: 'my-savings', rate: 7500 }]) }), state);
+  // The Personal remainder stays a budget set-aside and does not count as savings.
+  const rest = entryFromFields(fields({ type: 'income', personId: 'long', amount: '50', date: '2026-11-15', splits: '[]' }), state);
+  state.entries = [income, rest];
   state.savings = [deposit, withdrawal, savingsFromFields({ personId: 'mei', date: '2026-11-11', time: '08:00', amount: '5', direction: 'in' })];
   const long = personalSavings(state, 'long');
   assert.deepEqual([long.added, long.fromIncome, long.takenOut, long.balance], [25_000, 7_500, 4_050, 28_450]);
@@ -327,4 +329,28 @@ test('the changelog lists the package version first, newest release on top', asy
     assert.ok(a[0] > b[0] || (a[0] === b[0] && (a[1] > b[1] || (a[1] === b[1] && a[2] > b[2]))), `${CHANGELOG[i - 1].version} should be newer than ${CHANGELOG[i].version}`);
     assert.ok(CHANGELOG[i].changes.length > 0);
   }
+});
+
+test('My savings is a permanent category, added for existing planners and kept in order', () => {
+  const ids = freshData().categories.map(category => category.id);
+  assert.deepEqual(ids.slice(-2), ['my-savings', 'personal']);
+  const old = freshData();
+  old.categories = old.categories.filter(category => category.id !== 'my-savings');
+  const read = readState({ getItem: () => JSON.stringify(old) });
+  assert.deepEqual(read.categories.map(category => category.id).slice(-2), ['my-savings', 'personal']);
+  const named = freshData();
+  named.categories = named.categories.filter(category => category.id !== 'my-savings').concat({ id: 'mine', name: 'Savings', limit: 0 });
+  const merged = readState({ getItem: () => JSON.stringify(named) }).categories.filter(category => category.id === 'my-savings');
+  assert.deepEqual(merged.map(category => category.name), ['My savings']);
+});
+
+test('profile pictures accept only small image data URLs for known profiles', async () => {
+  const { cleanAvatars, isAvatar, readLocalAvatars } = await import('../src/avatars.js');
+  const jpeg = 'data:image/jpeg;base64,' + 'A'.repeat(400);
+  assert.ok(isAvatar(jpeg));
+  assert.equal(isAvatar('data:image/svg+xml;base64,AAAA'), false);
+  assert.equal(isAvatar('https://example.com/me.jpg'), false);
+  assert.equal(isAvatar('data:image/png;base64,' + 'A'.repeat(200_000)), false);
+  assert.deepEqual(cleanAvatars({ long: jpeg, mei: 'javascript:alert(1)', stranger: jpeg }), { long: jpeg });
+  assert.deepEqual(readLocalAvatars({ getItem: () => 'not json' }), {});
 });

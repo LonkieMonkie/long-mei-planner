@@ -12,6 +12,9 @@ export const WEDDING_CATEGORY_ID = 'wedding';
 // Income that isn't split into other budgets goes here.
 export const PERSONAL_CATEGORY_ID = 'personal';
 const personalCategory = { id: PERSONAL_CATEGORY_ID, name: 'Personal', limit: 0, icon: 'heart', tone: 'blue' };
+// The income share ticked for this category goes into that person's own savings (My Savings).
+export const SAVINGS_CATEGORY_ID = 'my-savings';
+const savingsCategory = { id: SAVINGS_CATEGORY_ID, name: 'My savings', limit: 0, icon: 'piggy', tone: 'mint' };
 const WEDDING_GOAL_ID = 'wedding';
 
 const weddingCategory = {
@@ -69,10 +72,12 @@ export const categoryColors = { indigo: '#7964da', blue: '#5283c7', rose: '#bc5f
 export const categoryColor = category => parseAccent(category.color) ?? categoryColors[category.tone] ?? DEFAULT_ACCENT;
 export const isWeddingName = name => name.trim().toLowerCase() === 'wedding';
 export const isPersonalName = name => name.trim().toLowerCase() === 'personal';
-export const isPermanentCategory = id => id === WEDDING_CATEGORY_ID || id === PERSONAL_CATEGORY_ID;
+export const isSavingsName = name => ['my savings', 'savings'].includes(name.trim().toLowerCase());
+export const isPermanentCategory = id => [WEDDING_CATEGORY_ID, PERSONAL_CATEGORY_ID, SAVINGS_CATEGORY_ID].includes(id);
 export function reservedNameError(name) {
   if (isWeddingName(name)) return 'Wedding is already a permanent category.';
   if (isPersonalName(name)) return 'Personal is already a permanent category.';
+  if (isSavingsName(name)) return 'My savings is already a permanent category.';
   return '';
 }
 
@@ -85,6 +90,7 @@ export function freshData() {
       { id: 'transport', name: 'Transportation', limit: 0, icon: 'car', tone: 'blue' },
       { id: 'dining', name: 'Dining out', limit: 0, icon: 'utensils', tone: 'rose' },
       { id: 'bills', name: 'Bills & subscriptions', limit: 0, icon: 'receipt', tone: 'mint' },
+      { ...savingsCategory },
       { ...personalCategory },
     ],
     goals: [{ ...weddingGoal }],
@@ -305,15 +311,20 @@ export function readState(storage) {
     state.entries = state.entries.map(entry => entry.categoryId === category.id ? { ...entry, categoryId: WEDDING_CATEGORY_ID } : entry);
   }
   if (!state.goals.some(goal => goal.id === WEDDING_GOAL_ID)) state.goals.unshift({ ...weddingGoal });
-  // Personal is permanent too. A category the couple already named Personal becomes it.
-  const named = state.categories.find(item => item.id === PERSONAL_CATEGORY_ID) ?? state.categories.find(item => isPersonalName(item.name));
-  if (!named) state.categories.push({ ...personalCategory });
-  else if (named.id !== PERSONAL_CATEGORY_ID) {
-    const oldId = named.id;
-    state.categories = state.categories.map(item => item === named ? { ...item, id: PERSONAL_CATEGORY_ID, name: personalCategory.name } : item);
-    state.entries = state.entries.map(entry => ({ ...entry, ...(entry.categoryId === oldId ? { categoryId: PERSONAL_CATEGORY_ID } : {}),
-      ...(entry.splits ? { splits: entry.splits.map(split => split.categoryId === oldId ? { ...split, categoryId: PERSONAL_CATEGORY_ID } : split) } : {}) }));
-  } else named.name = personalCategory.name;
+  // My savings and Personal are permanent too. A category the couple already gave one of
+  // those names becomes it, keeping its entries. A missing one is added before Personal.
+  for (const [fixed, matches] of [[savingsCategory, isSavingsName], [personalCategory, isPersonalName]]) {
+    const named = state.categories.find(item => item.id === fixed.id) ?? state.categories.find(item => matches(item.name));
+    if (!named) {
+      const personalAt = state.categories.findIndex(item => item.id === PERSONAL_CATEGORY_ID);
+      state.categories.splice(personalAt < 0 ? state.categories.length : personalAt, 0, { ...fixed });
+    } else if (named.id !== fixed.id) {
+      const oldId = named.id;
+      state.categories = state.categories.map(item => item === named ? { ...item, id: fixed.id, name: fixed.name } : item);
+      state.entries = state.entries.map(entry => ({ ...entry, ...(entry.categoryId === oldId ? { categoryId: fixed.id } : {}),
+        ...(entry.splits ? { splits: entry.splits.map(split => split.categoryId === oldId ? { ...split, categoryId: fixed.id } : split) } : {}) }));
+    } else named.name = fixed.name;
+  }
   // Automatic biweekly paydays were removed; repeating events replace them.
   delete state.firstPaydays;
   state.events = state.events.map(normalizeEvent);
