@@ -6,13 +6,12 @@ import { TREE_KINDS, skyAt, treeMeters } from './tree-model.js';
 
 const W = 400, CX = 200, PX = 110, GROUND = 70, SKY_PAD = 150, MIN_H = 470;
 const LOOKS = {
-  cherry: { trunk: '#7a5a48', leaves: ['#f7b6c8', '#f9c9d6', '#f29db5'], dots: '#fff4f7', fall: '#f7b6c8' },
-  oak: { trunk: '#7b5b3e', leaves: ['#5f9c5a', '#77b06b', '#4a8550'], dots: '#93c784' },
-  maple: { trunk: '#6e4f3a', leaves: ['#e8743b', '#f09a3e', '#d9502f'], dots: '#f6c453', fall: '#e8743b' },
+  cherry: { trunk: '#7a5a48', leaves: ['#f7b6c8', '#f9c9d6', '#f29db5'], dots: '#fff4f7', fall: '#f7b6c8', spread: 54, wide: .98, bend: .62, puff: .9 },
+  oak: { trunk: '#7b5b3e', leaves: ['#5f9c5a', '#77b06b', '#4a8550'], dots: '#93c784', spread: 80, wide: 1.34, bend: .12, puff: 1.08 },
+  maple: { trunk: '#6e4f3a', leaves: ['#e8743b', '#f09a3e', '#d9502f'], dots: '#f6c453', fall: '#e8743b', spread: 64, wide: 1.08, bend: .36, puff: 1 },
   pine: { trunk: '#6b4a35', leaves: ['#2f6b4f', '#3b7d5c', '#285c44'], cone: true },
 };
-const BLOBS = [[0, 0, .62], [-.55, .12, .46], [.55, .1, .48], [-.3, -.42, .46], [.32, -.44, .44], [0, -.62, .4], [-.62, -.2, .34], [.66, -.22, .32], [-.2, .34, .4], [.26, .36, .38]];
-const DOTS = [[-.42, -.3], [.3, -.52], [.5, .04], [-.12, .16], [-.62, .12], [.08, -.26], [.36, .34], [-.3, -.62], [.62, -.3], [-.05, -.74]];
+const PUFFS = [[0, 0, 1], [-.85, .28, .7], [.85, .3, .68], [0, -.55, .66]];
 const STARS = Array.from({ length: 34 }, (_, i) => ({ x: rnd(i, 1) * 100, y: rnd(i, 2) * 72, r: 1 + rnd(i, 3) * 1.6 }));
 
 function rnd(k, salt) {
@@ -54,6 +53,29 @@ function branchesFor(h, groundY, canopyBottom, baseW, topW, trunkTop) {
   return list;
 }
 
+// The crown: limbs fan out from the upper trunk and each carries its own puff of leaves,
+// so the branches stay visible between the foliage.
+function crownFor(look, R, base, crownH, topW) {
+  const fractions = R < 20 ? [-1, 0, 1] : R < 46 ? [-1, -.5, 0, .5, 1] : [-1, -.68, -.36, 0, .36, .68, 1];
+  return fractions.map((f, i) => {
+    const angle = (f * look.spread + (rnd(i, 11) - .5) * 9) * Math.PI / 180;
+    const sx = CX + f * topW * .3, sy = base - (1 - Math.abs(f)) * crownH * .42;
+    const ex = CX + Math.sin(angle) * R * look.wide * (.86 + rnd(i, 12) * .16);
+    const ey = base - crownH * (.26 + .62 * Math.cos(angle) ** 1.2);
+    return {
+      i, sx, sy, ex, ey, r: R * (.2 + rnd(i, 13) * .05) * look.puff, width: Math.max(1.6, topW * (.62 - Math.abs(f) * .22)),
+      cx: sx + (ex - sx) * (.55 - look.bend * .4), cy: sy - (sy - ey) * (.12 + look.bend * .8), outer: Math.abs(f) > .3,
+    };
+  });
+}
+
+function Puff({ x, y, r, look, k }) {
+  return <>
+    {PUFFS.map(([dx, dy, size], i) => <ellipse key={i} cx={x + dx * r} cy={y + dy * r} rx={size * r * 1.12} ry={size * r * .84} fill={look.leaves[(k + i) % 3]}/>)}
+    {r > 9 && [[-.5, -.2], [.45, .1], [.05, -.6]].map(([dx, dy], i) => <circle key={i} cx={x + dx * r} cy={y + dy * r} r={Math.max(1.6, r * .09)} fill={look.dots}/>)}
+  </>;
+}
+
 function Bird({ x, y, side }) {
   return <g transform={`translate(${x} ${y}) scale(${-side} 1)`}>
     <g className="tree-bird">
@@ -83,12 +105,13 @@ export function SavingsTree({ balance, tree }) {
   const totalH = Math.max(MIN_H, GROUND + Math.max(target, nextMeter) * PX + SKY_PAD);
   const groundY = totalH - GROUND;
   const treeTop = groundY - h * PX;
-  const R = Math.min(14 + 110 * (1 - Math.exp(-h / 3)), h * PX * (look.cone ? .3 : .45));
-  const canopyH = look.cone ? R * 2.6 : R * 1.5;
-  const trunkTop = look.cone ? treeTop + R * .5 : treeTop + R * .8;
+  const R = Math.min(14 + 110 * (1 - Math.exp(-h / 3)), h * PX * (look.cone ? .3 : .4));
+  const canopyH = look.cone ? R * 2.6 : R * 1.9;
+  const trunkTop = look.cone ? treeTop + R * .5 : treeTop + canopyH;
   const canopyBottom = treeTop + canopyH;
   const baseW = h ? 5 + 44 * (1 - Math.exp(-h / 6)) : 0;
   const topW = Math.max(2.5, baseW * .34);
+  const crown = look.cone ? [] : crownFor(look, R, trunkTop, canopyH - R * .2, topW);
   const branches = branchesFor(h, groundY, canopyBottom, baseW, topW, trunkTop);
 
   useEffect(() => {
@@ -171,7 +194,7 @@ export function SavingsTree({ balance, tree }) {
                 <g className="tree-tuft" style={{ transformOrigin: `${ex}px ${ey}px`, animationDelay: `${-rnd(k, 7) * 5}s` }}>
                   {look.cone
                     ? <ellipse cx={ex - side * length * .3} cy={ey + 5} rx={length * .62} ry={9 * branch.grown} fill={look.leaves[k % 3]} transform={`rotate(${-side * 12} ${ex} ${ey})`}/>
-                    : [[0, -4, 15], [-side * 13, 2, 11], [side * 9, 5, 10]].map(([dx, dy, r], i) => <circle key={i} cx={ex + dx} cy={ey + dy} r={r * branch.grown} fill={look.leaves[(k + i) % 3]}/>)}
+                    : [[0, -3, 13], [-side * 11, 3, 10], [side * 9, 4, 9]].map(([dx, dy, r], i) => <ellipse key={i} cx={ex + dx} cy={ey + dy} rx={r * 1.15 * branch.grown} ry={r * .74 * branch.grown} fill={look.leaves[(k + i) % 3]}/>)}
                 </g>
               </g>;
             })}
@@ -179,11 +202,13 @@ export function SavingsTree({ balance, tree }) {
               {look.cone
                 ? [0, 1, 2, 3].map(i => { const top = treeTop + i * R * .52, half = R * (.42 + i * .2); return <path key={i} d={`M${CX} ${top}L${CX + half} ${top + R * .95}Q${CX} ${top + R * 1.08} ${CX - half} ${top + R * .95}Z`} fill={look.leaves[i % 3]}/>; }).reverse()
                 : <>
-                  {BLOBS.map(([dx, dy, r], i) => <circle key={i} cx={CX + dx * R} cy={treeTop + R * .8 + dy * R} r={r * R} fill={look.leaves[i % 3]}/>)}
-                  {R > 26 && DOTS.map(([dx, dy], i) => <circle key={i} cx={CX + dx * R} cy={treeTop + R * .8 + dy * R} r={Math.max(2, R * .045)} fill={look.dots}/>)}
+                  <path d={`M${CX - topW / 2} ${trunkTop + 1}L${CX} ${trunkTop - canopyH * .62}L${CX + topW / 2} ${trunkTop + 1}Z`} fill={look.trunk}/>
+                  {crown.map(limb => <path key={limb.i} d={`M${limb.sx} ${limb.sy}Q${limb.cx} ${limb.cy} ${limb.ex} ${limb.ey}`} stroke={look.trunk} strokeWidth={limb.width} strokeLinecap="round" fill="none"/>)}
+                  {crown.filter(limb => limb.outer && R > 40).map(limb => <Puff key={'m' + limb.i} x={(limb.sx + 2 * limb.cx + limb.ex) / 4} y={(limb.sy + 2 * limb.cy + limb.ey) / 4 - limb.r * .3} r={limb.r * .62} look={look} k={limb.i + 1}/>)}
+                  {crown.map(limb => <Puff key={limb.i} x={limb.ex} y={limb.ey} r={limb.r} look={look} k={limb.i}/>)}
                 </>}
             </g>
-            {perch && <Bird key={bird.id} x={perch.top ? CX + R * .25 : perch.x + perch.side * perch.length * .62} y={perch.top ? treeTop + (look.cone ? R * .62 : R * .2) : perch.y - perch.lift * .55} side={perch.top ? -1 : perch.side}/>}
+            {perch && <Bird key={bird.id} x={perch.top ? CX + R * .1 : perch.x + perch.side * perch.length * .62} y={perch.top ? treeTop + (look.cone ? R * .62 : R * .08) : perch.y - perch.lift * .55} side={perch.top ? -1 : perch.side}/>}
           </g>}
           {!h && <g><ellipse cx={CX} cy={groundY + 2} rx="26" ry="9" fill="#8a6b4f"/><path d={`M${CX} ${groundY - 2}v-12`} stroke="#5d9960" strokeWidth="3" strokeLinecap="round"/><ellipse cx={CX + 6} cy={groundY - 16} rx="7" ry="4" fill="#77b06b" transform={`rotate(-30 ${CX + 6} ${groundY - 16})`}/></g>}
         </svg>
