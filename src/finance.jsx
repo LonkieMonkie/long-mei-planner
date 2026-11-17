@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { ArrowDownLeft, ArrowDownRight, ArrowRight, CalendarDays, ChevronLeft, ChevronRight, CircleDollarSign, Landmark, LockKeyhole, Pencil, PiggyBank, Plus, SlidersHorizontal, Target, TrendingUp, Wallet } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { ArrowDownLeft, ArrowDownRight, ArrowRight, CalendarDays, ChevronLeft, ChevronRight, CircleDollarSign, Clock3, Landmark, LockKeyhole, Pencil, PiggyBank, Plus, SlidersHorizontal, Target, TrendingUp, Wallet } from 'lucide-react';
 import { upcomingEvents } from './events.js';
 import { goalForecast } from './forecast.js';
 import { PEOPLE, WEDDING_CATEGORY_ID, categoryColor, dateFromKey, displayTime, isWeddingName, localDate, money, shiftMonth, shortDate } from './model.js';
@@ -70,13 +70,24 @@ function GoalProgress({ goal, totals, entries }) {
   </>;
 }
 
+function LiveClock() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    // Tick on the second boundary so the display never lags behind the device clock.
+    let timer = setTimeout(function tick() { setNow(new Date()); timer = setTimeout(tick, 1000 - Date.now() % 1000); }, 1000 - Date.now() % 1000);
+    return () => clearTimeout(timer);
+  }, []);
+  const [time, period] = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' }).split(' ');
+  return <time className="live-clock" dateTime={now.toISOString()}><Clock3 size={15} aria-hidden="true"/><b>{time}</b>{period}</time>;
+}
+
 export function Dashboard({ state, totals, me, open, navigate }) {
   const goal = state.goals[0];
   const upcoming = upcomingEvents(state.events, localDate());
   const name = PEOPLE.find(person => person.id === me)?.name;
   return <>
     <section className="welcome-banner">
-      <div className="banner-copy"><h2>{name ? `Welcome back, ${name}.` : 'Welcome back, you two.'}</h2><p>See where your money goes and how close you are to your shared goals.</p><button className="btn primary" onClick={() => open({ kind: 'entry' })}><Plus size={17}/> Add an entry</button></div>
+      <div className="banner-copy"><LiveClock/><h2>{name ? `Welcome back, ${name}.` : 'Welcome back, you two.'}</h2><p>See where your money goes and how close you are to your shared goals.</p><button className="btn primary" onClick={() => open({ kind: 'entry' })}><Plus size={17}/> Add an entry</button></div>
       <div className="banner-plants"><PlantPair/></div>
     </section>
     <div className="stats-grid">
