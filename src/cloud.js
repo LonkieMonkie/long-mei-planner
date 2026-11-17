@@ -11,7 +11,11 @@ export async function connect(config) {
   const ref = store.doc(db, 'planner', 'shared');
   return {
     onUser: listener => auth.onAuthStateChanged(session, user => listener(user ? { uid: user.uid, email: user.email } : null)),
-    signIn: (email, password) => auth.signInWithEmailAndPassword(session, email, password),
+    // With `remember` the sign-in survives closing the browser; without it, it ends with the tab.
+    signIn: async (email, password, remember) => {
+      await auth.setPersistence(session, remember ? auth.browserLocalPersistence : auth.browserSessionPersistence);
+      return auth.signInWithEmailAndPassword(session, email, password);
+    },
     signOut: () => auth.signOut(session),
     // Calls onData with the shared document (or null before it exists) every time it changes.
     subscribe: (onData, onError) => store.onSnapshot(ref, { includeMetadataChanges: true },

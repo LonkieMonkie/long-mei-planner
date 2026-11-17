@@ -173,7 +173,7 @@ function App() {
   const me = PEOPLE.find(person => person.id === session.me);
   if (cloudOn && session.status !== 'ready') {
     return <div className="app-shell" style={accentStyles(state.accentColor)}>
-      <AccountGate session={session} signIn={(email, password) => backend.current.signIn(email, password)} signOut={signOut} chooseProfile={chooseProfile}/>
+      <AccountGate session={session} signIn={(email, password, remember) => backend.current.signIn(email, password, remember)} signOut={signOut} chooseProfile={chooseProfile}/>
     </div>;
   }
   return <div className="app-shell" style={accentStyles(state.accentColor)}>

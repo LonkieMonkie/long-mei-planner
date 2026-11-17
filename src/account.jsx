@@ -39,10 +39,11 @@ export function AccountGate({ session, signIn, signOut, chooseProfile }) {
       event.preventDefault();
       const fields = Object.fromEntries(new FormData(event.currentTarget));
       setBusy(true); setError('');
-      signIn(fields.email.trim(), fields.password).catch(e => setError(signInErrors[e.code] ?? 'Sign-in failed. Try again.')).finally(() => setBusy(false));
+      signIn(fields.email.trim(), fields.password, fields.remember === 'on').catch(e => setError(signInErrors[e.code] ?? 'Sign-in failed. Try again.')).finally(() => setBusy(false));
     }}>
       <label>Email<input name="email" type="email" autoComplete="username" required autoFocus/></label>
       <label>Password<input name="password" type="password" autoComplete="current-password" required/></label>
+      <label className="check-row"><input name="remember" type="checkbox" defaultChecked/>Remember me on this device</label>
       {error && <p className="form-error" role="alert">{error}</p>}
       <div className="form-actions"><button className="btn primary" disabled={busy}>{busy ? 'Signing in' : 'Sign in'}</button></div>
     </form>
