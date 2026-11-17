@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { CalendarDays, ChevronLeft, ChevronRight, CircleAlert, CircleCheck, LayoutGrid, PiggyBank, Plus, Scale, Settings as SettingsIcon, Sprout, Wallet } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, CircleAlert, CircleCheck, HandCoins, LayoutGrid, PiggyBank, Plus, Scale, Settings as SettingsIcon, Sprout, Wallet } from 'lucide-react';
 import { Budget, Dashboard, MonthSelector, Savings } from './finance.jsx';
 import { CalendarView } from './calendar.jsx';
+import { MySavings } from './my-savings.jsx';
+import { personalSavings } from './personal-savings.js';
 import { DebtTracker } from './debts.jsx';
 import { Dialogs } from './dialogs.jsx';
 import { ExportCard, Settings, TreeSettings } from './settings.jsx';
@@ -21,6 +23,7 @@ const views = [
   { id: 'budget', name: 'Budget', icon: Wallet, subtitle: 'Track income, spending and savings for each of you.' },
   { id: 'calendar', name: 'Calendar', icon: CalendarDays, subtitle: 'See your events, budget entries, deposits and debt payments.' },
   { id: 'savings', name: 'Joint Savings', icon: PiggyBank, subtitle: 'See what each of you has put toward your shared goals.' },
+  { id: 'my-savings', name: 'My Savings', icon: HandCoins, subtitle: 'Your own savings: money you add or take out, plus the Personal share of your income.' },
   { id: 'debts', name: 'Debt Tracker', icon: Scale, subtitle: 'Track what you owe each other and record payments.' },
   { id: 'settings', name: 'Settings', icon: SettingsIcon, subtitle: 'Personalize your dashboard and export your records.' },
 ];
@@ -56,6 +59,11 @@ function exportExcel(state, totals) {
       ['Goal', 'Target (USD)', 'Long (USD)', 'Mei (USD)', 'Total (USD)'],
       ...state.goals.map(goal => [goal.name, goal.target / 100, totals.goals[goal.id].long / 100, totals.goals[goal.id].mei / 100, totals.goals[goal.id].total / 100]),
       ['Manual adjustment', '', '', '', state.savingsAdjustment / 100], ['Joint balance', '', '', '', totals.jointBalance / 100],
+    ] },
+    { name: 'Personal savings', rows: [
+      ['Profile', 'Date', 'Time', 'Type', 'Note', 'Amount (USD)'],
+      ...PEOPLE.flatMap(person => personalSavings(state, person.id).rows.map(row => [person.name, row.date, row.time,
+        row.kind === 'income' ? 'Personal share of income' : row.amount < 0 ? 'Taken out' : 'Added', row.note, row.amount / 100])),
     ] },
     { name: 'Events', rows: [
       ['Title', 'Date', 'Time', 'Repeats', 'Description'], ...state.events.map(event => [event.title, event.date, event.time, repeatSummary(event), event.description]),
@@ -216,6 +224,7 @@ function App() {
         {active === 'budget' && <Budget {...{ state, totals, month, save, edit, remove }} open={setModal}/>}
         {active === 'calendar' && <CalendarView state={state} open={setModal} month={calendarMonth} setMonth={setCalendarMonth} selected={selectedDay} setSelected={setSelectedDay}/>}
         {active === 'savings' && <Savings {...{ state, totals, edit, remove }} open={setModal}/>}
+        {active === 'my-savings' && <MySavings state={state} me={session.me} open={setModal} editEntry={edit}/>}
         {active === 'debts' && <DebtTracker debts={state.debts} open={setModal}/>}
         {active === 'settings' && <>{cloudOn && <AccountCard session={session} signOut={signOut}/>}<Settings key={state.accentColor} accent={state.accentColor} save={save}/><TreeSettings key={state.tree.kind + state.tree.perMeter} tree={state.tree} save={save}/><ExportCard onExport={() => exportExcel(state, totals)}/></>}
       </div>

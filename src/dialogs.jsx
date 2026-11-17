@@ -4,6 +4,7 @@ import { PEOPLE, PERSONAL_CATEGORY_ID, WEDDING_CATEGORY_ID, categoryColor, dateF
 import { ActionForm, Modal } from './ui.jsx';
 import { CategoryForm } from './category-form.jsx';
 import { REPEATS, deleteEvent, editEvent, eventFromFields, occurrenceIndex } from './events.js';
+import { savingsFromFields } from './personal-savings.js';
 
 function EntryForm({ state, item, date, person, me, weddingDeposit = false, close, save }) {
   const [type, setType] = useState(weddingDeposit ? 'expense' : item?.type ?? 'income');
@@ -143,7 +144,7 @@ export function Dialogs({ modal, state, totals, me, close, save, onEventSaved })
   const { kind, item } = modal;
   const titles = {
     entry: item ? 'Edit entry' : 'Add an entry',
-    'wedding-deposit': 'Add Wedding deposit',
+    'wedding-deposit': 'Add a deposit', saving: item ? 'Edit savings record' : modal.direction === 'out' ? 'Take money out' : 'Add a deposit', 'delete-saving': 'Delete savings record?',
     category: item ? item.name + ' settings' : 'Add a budget category', limit: 'Edit budget limit',
     balance: 'Edit joint balance', goal: item ? 'Edit savings goal' : 'Add a savings goal',
     event: item ? 'Edit event' : 'Add event', 'delete-event': item?.repeat ? 'Delete repeating event?' : 'Delete event?', 'delete-entry': 'Delete entry?',
@@ -153,8 +154,16 @@ export function Dialogs({ modal, state, totals, me, close, save, onEventSaved })
   let content;
   switch (kind) {
     case 'entry':
+      content = <EntryForm {...{ state, item, me, close, save }} date={modal.date} person={modal.person}/>;
+      break;
     case 'wedding-deposit':
-      content = <EntryForm {...{ state, item, me, close, save }} date={modal.date} person={modal.person} weddingDeposit={kind === 'wedding-deposit'}/>;
+    case 'saving':
+      content = <SavingsForm {...{ state, item, me, close, save }} destination={kind === 'wedding-deposit' ? 'wedding' : 'personal'} direction={modal.direction} person={modal.person}/>;
+      break;
+    case 'delete-saving':
+      content = <ActionForm cancel={close} label="Delete" onSave={() => {
+        done(current => ({ ...current, savings: current.savings.filter(record => record.id !== item.id) }), 'Savings record deleted');
+      }}><p className="field-help">Delete this {item.amount < 0 ? 'withdrawal of' : 'deposit of'} {money(Math.abs(item.amount))} from {PEOPLE.find(p => p.id === item.personId)?.name}’s savings? The balance updates right away.</p></ActionForm>;
       break;
     case 'category':
       content = <CategoryForm {...{ item, state, done, close }}/>;
@@ -298,4 +307,44 @@ function DeleteEvent({ event, date, close, done }) {
     </div>
     <div className="form-actions"><button type="button" className="btn secondary" onClick={close}>Cancel</button></div>
   </div>;
+}
+
+// One form for putting money aside: into the Wedding goal (a Wedding budget entry, as before)
+// or into the person's own savings, where money can also be taken out.
+function SavingsForm({ state, item, me, destination, direction, person, close, save }) {
+  const [where, setWhere] = useState(item ? 'personal' : destination);
+  const [way, setWay] = useState(item ? (item.amount < 0 ? 'out' : 'in') : direction ?? 'in');
+  const [personId, setPersonId] = useState(item?.personId ?? person ?? me ?? 'long');
+  const [initialTime] = useState(() => item?.time ?? localTime());
+  const name = PEOPLE.find(p => p.id === personId).name;
+  return <ActionForm cancel={close} label={item ? 'Save changes' : way === 'out' && where === 'personal' ? 'Take out' : 'Save deposit'} onSave={fields => {
+    if (where === 'wedding') {
+      save(current => ({ ...current, entries: [entryFromFields({ ...fields, personId, type: 'expense', categoryId: WEDDING_CATEGORY_ID }, current), ...current.entries] }), 'Wedding deposit saved');
+    } else {
+      save(current => {
+        if (item && !current.savings.some(record => record.id === item.id)) throw new Error('This record was deleted on another device. Close the form to see the latest.');
+        const record = savingsFromFields({ ...fields, personId, direction: way }, item);
+        return { ...current, savings: item ? current.savings.map(row => row.id === record.id ? record : row) : [record, ...current.savings] };
+      }, item ? 'Savings record updated' : way === 'out' ? `Taken out of ${name}’s savings` : `Added to ${name}’s savings`);
+    }
+    close();
+  }}>
+    {!item && <fieldset className="edit-scope">
+      <legend>Where should this money go?</legend>
+      {[['wedding', 'Wedding', 'Joint savings, counted toward your Wedding goal'], ['personal', `${name}’s savings`, 'Your own savings, shown on My Savings']].map(([value, label, hint]) =>
+        <label key={value} className="scope-option"><input type="radio" name="where" checked={where === value} onChange={() => setWhere(value)}/><span><strong>{label}</strong><small>{hint}</small></span></label>)}
+    </fieldset>}
+    {where === 'personal' && <div className="segmented" aria-label="Add or take out">
+      <button type="button" aria-pressed={way === 'in'} onClick={() => setWay('in')}><ArrowDownLeft size={16}/> Add money</button>
+      <button type="button" aria-pressed={way === 'out'} onClick={() => setWay('out')}><ArrowUpRight size={16}/> Take out</button>
+    </div>}
+    {!me && <label>Whose money?<select value={personId} onChange={e => setPersonId(e.target.value)}>{PEOPLE.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>}
+    <div className="form-row">
+      <label>Date<input name="date" type="date" defaultValue={item?.date ?? localDate()} required/></label>
+      <label>Time<input name="time" type="time" defaultValue={initialTime} required/></label>
+    </div>
+    <label>Amount ($)<input name="amount" type="number" min="0.01" max="1000000000" step="0.01" defaultValue={item ? Math.abs(item.amount) / 100 : ''} required autoFocus/></label>
+    {where === 'personal' && <label>Note (optional)<input name="note" maxLength={100} defaultValue={item?.note} placeholder={way === 'out' ? 'e.g. New laptop' : 'e.g. Birthday money'}/></label>}
+    {where === 'wedding' && <p className="field-help">This logs a Wedding budget entry and adds the amount to Joint Savings.</p>}
+  </ActionForm>;
 }

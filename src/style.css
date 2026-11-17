@@ -340,6 +340,18 @@ button.secondary:active { box-shadow: 0 1px 0 var(--color-line); }
 .scope-option input { flex-shrink: 0; width: 18px; height: 18px; padding: 0; accent-color: var(--color-accent); }
 .scope-option strong { display: block; font-size: 13px; }
 .scope-option small { display: block; margin-top: 1px; font-size: 11px; font-weight: 500; color: var(--color-muted); }
+.balance-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.balance-actions .balance-button { position: static; }
+.person-switch { max-width: 260px; margin-bottom: 16px; }
+.savings-explainer { display: grid; gap: 10px; padding-left: 18px; font-size: 13px; line-height: 1.5; color: var(--color-muted); list-style: disc; }
+.savings-explainer b { color: var(--color-ink); }
+.savings-rows { display: grid; gap: 8px; }
+.savings-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 12px; padding: 10px 12px; border: 1.5px solid var(--color-line); border-radius: 18px; }
+.savings-row strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
+.savings-row small { display: block; font-size: 12px; color: var(--color-muted); }
+.savings-row > b { font-size: 15px; font-variant-numeric: tabular-nums; }
+.savings-row .positive { color: #1f6b4c; }
+.savings-row .row-actions { display: flex; justify-content: flex-end; gap: 2px; min-width: 72px; }
 .delete-choices { display: grid; gap: 8px; }
 .danger-text { color: #a5254a; }
 .danger-text:hover { background: #fce9ee; }

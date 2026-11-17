@@ -188,7 +188,7 @@ export function Savings({ state, totals, open, edit, remove }) {
     <section className="card">
       <PanelHeading title="Savings goals" subtitle="Each goal adds up the contributions assigned to it." action={<div className="flex flex-wrap gap-2">
         <button className="btn secondary" onClick={() => open({ kind: 'goal' })}><Plus size={17}/> Add goal</button>
-        <button className="btn primary" onClick={() => open({ kind: 'wedding-deposit' })}><Plus size={17}/> Add Wedding deposit</button>
+        <button className="btn primary" onClick={() => open({ kind: 'wedding-deposit' })}><Plus size={17}/> Add deposit</button>
       </div>}/>
       <div className="goals-grid">{state.goals.map(goal => <article className="goal-item" key={goal.id}>
         <div className="goal-title"><span className="icon-tile indigo"><Target size={19}/></span><h3>{goal.name}</h3><button className="icon-btn" aria-label={`Edit goal ${goal.name}`} onClick={() => open({ kind: 'goal', item: goal })}><Pencil size={14}/></button></div>
