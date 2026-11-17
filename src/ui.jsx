@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowDownLeft, ArrowUpRight, Car, Heart, Pencil, Receipt, ShoppingBasket, Tag, Trash2, Utensils, X } from 'lucide-react';
-import { PEOPLE, categoryColor, entryContribution, money, shortDate, timestamp } from './model.js';
+import { PEOPLE, categoryColor, entryContribution, goalShares, money, shortDate, timestamp } from './model.js';
 
 export const CATEGORY_ICONS = { basket: ShoppingBasket, car: Car, heart: Heart, utensils: Utensils, receipt: Receipt, tag: Tag };
 
@@ -57,11 +57,11 @@ export function EntryHistory({ state, entries, onEdit, onDelete, compact = false
       const FlowIcon = entry.type === 'income' ? ArrowDownLeft : ArrowUpRight;
       const category = state.categories.find(item => item.id === entry.categoryId);
       return <tr key={entry.id}>
-        <td><div className="entry-source"><span className={`icon-tile ${category ? 'category-icon' : entry.type === 'income' ? 'mint' : 'rose'}`} style={category ? { '--category-color': categoryColor(category) } : undefined}><FlowIcon size={17}/></span><div><strong>{entry.source}</strong><small>{entry.type === 'income' ? 'Income' : 'Expense'} · {shortDate(entry.date)}</small></div></div></td>
+        <td><div className="entry-source"><span className={`icon-tile ${category ? 'category-icon' : entry.type === 'income' ? 'mint' : 'rose'}`} style={category ? { '--category-color': categoryColor(category) } : undefined}><FlowIcon size={17}/></span><div><strong>{entry.source}</strong><small>{entry.type === 'income' ? 'Income' : 'Expense'} · {shortDate(entry.date)}{entry.splits && ` · split into ${entry.splits.length} ${entry.splits.length === 1 ? 'budget' : 'budgets'}`}</small></div></div></td>
         <td><Person id={entry.personId}/></td>
         <td>{timestamp(entry.createdAt)}{entry.editedAt && <small title={timestamp(entry.editedAt)}>Edited {timestamp(entry.editedAt)}</small>}</td>
         <td className={entry.type === 'income' ? 'positive' : ''}><strong>{entry.type === 'income' ? '+' : '−'}{money(entry.amount)}</strong></td>
-        <td>{entry.goalId && entry.rate ? <><strong>{money(entryContribution(entry))}</strong><small>{goals.get(entry.goalId)} · {entry.rate / 100}%{entry.type === 'income' && ' · Legacy'}</small></> : '—'}</td>
+        <td>{entryContribution(entry) ? <><strong>{money(entryContribution(entry))}</strong><small>{goalShares(entry).map(share => `${goals.get(share.goalId)} · ${share.rate / 100}%`).join(', ')}{entry.type === 'income' && !entry.splits && ' · Legacy'}</small></> : '—'}</td>
         {!compact && <td><div className="entry-actions">
           <button className="icon-btn" aria-label={`Edit ${entry.source} entry`} title="Edit entry" onClick={() => onEdit(entry)}><Pencil size={15}/></button>
           <button className="icon-btn danger" aria-label={`Delete ${entry.source} entry`} title="Delete entry" onClick={() => onDelete(entry)}><Trash2 size={16}/></button>

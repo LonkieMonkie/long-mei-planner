@@ -8,7 +8,7 @@ import { Dialogs } from './dialogs.jsx';
 import { ExportCard, Settings, TreeSettings } from './settings.jsx';
 import { accentStyles } from './appearance.js';
 import { PlantPair } from './plants.jsx';
-import { PEOPLE, STORAGE_KEY, categoryColor, entryContribution, entryTime, freshData, localDate, readState, summarize } from './model.js';
+import { PEOPLE, STORAGE_KEY, categoryColor, entryContribution, entryTime, goalShares, freshData, localDate, readState, summarize } from './model.js';
 import { workbook } from './excel.js';
 import { repeatSummary } from './events.js';
 import { AccountCard, AccountGate } from './account.jsx';
@@ -42,14 +42,15 @@ function loadDashboard() {
 function exportExcel(state, totals) {
   const names = new Map(PEOPLE.map(p => [p.id, p.name]));
   const goals = new Map(state.goals.map(g => [g.id, g.name]));
+  const categories = new Map(state.categories.map(c => [c.id, c.name]));
   const blob = workbook([
     { name: 'Entry history', rows: [
-      ['Profile', 'Transaction date', 'Transaction time', 'Type', 'Source', 'Amount (USD)', 'Joint goal', 'Savings %', 'Contribution (USD)', 'Logged at', 'Last edited at'],
-      ...state.entries.map(entry => [names.get(entry.personId), entry.date, entryTime(entry), entry.type, entry.source, entry.amount / 100, goals.get(entry.goalId) ?? '', entry.rate === undefined ? '' : entry.rate / 100, entryContribution(entry) / 100, entry.createdAt, entry.editedAt ?? '']),
+      ['Profile', 'Transaction date', 'Transaction time', 'Type', 'Source', 'Amount (USD)', 'Budget split', 'Joint goal', 'Savings %', 'Contribution (USD)', 'Logged at', 'Last edited at'],
+      ...state.entries.map(entry => [names.get(entry.personId), entry.date, entryTime(entry), entry.type, entry.source, entry.amount / 100, (entry.splits ?? []).map(split => `${categories.get(split.categoryId) ?? 'Deleted category'} ${split.rate / 100}% ($${(split.amount / 100).toFixed(2)})`).join('; '), goalShares(entry).map(share => goals.get(share.goalId)).join(', '), entry.rate === undefined ? '' : entry.rate / 100, entryContribution(entry) / 100, entry.createdAt, entry.editedAt ?? '']),
     ] },
     { name: 'Budget categories', rows: [
-      ['Category', 'Monthly limit (USD)', 'Color', 'Long savings %', 'Mei savings %', 'Joint goal'],
-      ...state.categories.map(category => [category.name, category.limit / 100, categoryColor(category), (category.savingsRates?.long ?? 0) / 100, (category.savingsRates?.mei ?? 0) / 100, goals.get(category.savingsGoalId) ?? '']),
+      ['Category', 'Monthly limit (USD)', 'Color', 'Long savings %', 'Mei savings %', 'Long income share %', 'Mei income share %', 'Joint goal'],
+      ...state.categories.map(category => [category.name, category.limit / 100, categoryColor(category), (category.savingsRates?.long ?? 0) / 100, (category.savingsRates?.mei ?? 0) / 100, (category.incomeShares?.long ?? 0) / 100, (category.incomeShares?.mei ?? 0) / 100, goals.get(category.savingsGoalId) ?? '']),
     ] },
     { name: 'Joint savings', rows: [
       ['Goal', 'Target (USD)', 'Long (USD)', 'Mei (USD)', 'Total (USD)'],

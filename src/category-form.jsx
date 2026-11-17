@@ -85,7 +85,8 @@ export function CategoryForm({ item, state, done, close }) {
     if (!item && !name) throw new Error('Enter a category name.');
     if (!item && isWeddingName(name)) throw new Error('Wedding is already a permanent category.');
     const savingsRates = Object.fromEntries(PEOPLE.map(({ id }) => [id, decimalUnits(fields[id] || '0', 10_000)]));
-    const update = { color, savingsRates, savingsGoalId: wedding ? item.savingsGoalId : fields.savingsGoalId };
+    const incomeShares = Object.fromEntries(PEOPLE.map(({ id }) => [id, decimalUnits(fields['share-' + id] || '0', 10_000)]));
+    const update = { color, savingsRates, incomeShares, savingsGoalId: wedding ? item.savingsGoalId : fields.savingsGoalId };
     done(current => ({
       ...current,
       categories: item
@@ -98,9 +99,12 @@ export function CategoryForm({ item, state, done, close }) {
     <div className="form-row">{PEOPLE.map(person => <label key={person.id}>{person.name} savings (%)
       <input type="number" name={person.id} min="0" max="100" step="0.01" defaultValue={(item?.savingsRates?.[person.id] ?? 0) / 100}/>
     </label>)}</div>
+    <div className="form-row">{PEOPLE.map(person => <label key={person.id}>{person.name} share of income (%)
+      <input type="number" name={'share-' + person.id} min="0" max="100" step="0.01" defaultValue={(item?.incomeShares?.[person.id] ?? 0) / 100}/>
+    </label>)}</div>
     {wedding ? <p className="field-help">Wedding is permanent and adds to the Wedding goal in Joint Savings.</p> : <label>Joint savings goal<select name="savingsGoalId" defaultValue={item?.savingsGoalId || state.goals[0]?.id}>
       {state.goals.map(goal => <option key={goal.id} value={goal.id}>{goal.name}</option>)}
     </select></label>}
-    <p className="field-help">These rates apply to new entries in this category. Saved entries keep their recorded rate.</p>
+    <p className="field-help">Savings rates apply to new expenses in this category. The share of income is suggested when that person adds income. Saved entries keep their recorded rates.</p>
   </ActionForm>;
 }

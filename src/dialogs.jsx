@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ArrowDownLeft, ArrowUpRight, PiggyBank } from 'lucide-react';
-import { PEOPLE, WEDDING_CATEGORY_ID, contribution, debtFromFields, decimalUnits, entryContribution, entryFromFields, entryTime, localDate, localTime, money, shortDate, savingsRule, setJointBalance, settleDebt } from './model.js';
+import { PEOPLE, WEDDING_CATEGORY_ID, categoryColor, contribution, debtFromFields, decimalUnits, entryContribution, entryFromFields, entryTime, localDate, localTime, money, shortDate, savingsRule, setJointBalance, settleDebt } from './model.js';
 import { ActionForm, Modal } from './ui.jsx';
 import { CategoryForm } from './category-form.jsx';
 import { REPEATS, deleteEvent, eventFromFields } from './events.js';
@@ -13,14 +13,27 @@ function EntryForm({ state, item, date, person, me, weddingDeposit = false, clos
   const category = state.categories.find(item => item.id === categoryId);
   const { rate, goalId } = savingsRule(category, personId, state.goals, item);
   const [initialTime] = useState(() => item ? entryTime(item) : localTime());
-  let projected = 0;
-  try { projected = contribution(decimalUnits(amount || '0'), rate); } catch { /* Invalid amounts are reported on submit. */ }
+  const [shares, setShares] = useState(() => initialShares(state, personId, item));
+  let units = 0, projected = 0;
+  try { units = decimalUnits(amount || '0'); projected = contribution(units, rate); } catch { /* Invalid amounts are reported on submit. */ }
+  function choosePerson(id) {
+    setPersonId(id);
+    setShares(initialShares(state, id, item));
+  }
   function submit(fields) {
+    let rates = {};
+    if (type === 'income') {
+      rates = shareRates(state, shares);
+      fields = { ...fields, splits: JSON.stringify(state.categories.filter(c => shares[c.id]?.on).map(c => ({ categoryId: c.id, rate: rates[c.id] }))) };
+    }
     save(current => {
       if (item && !current.entries.some(entry => entry.id === item.id && entry.editedAt === item.editedAt)) {
         throw new Error('This entry changed in another tab. Close the form and open it again.');
       }
       const entry = entryFromFields(fields, current, item);
+      // The percentages shown become this person's saved shares, ticked or not.
+      if (type === 'income') current = { ...current, categories: current.categories.map(c => c.id in rates && rates[c.id] !== (c.incomeShares?.[entry.personId] ?? 0)
+        ? { ...c, incomeShares: { ...c.incomeShares, [entry.personId]: rates[c.id] } } : c) };
       return { ...current, entries: item ? current.entries.map(row => row.id === entry.id ? entry : row) : [entry, ...current.entries] };
     }, item ? 'Entry updated' : 'Entry saved');
     close();
@@ -34,7 +47,7 @@ function EntryForm({ state, item, date, person, me, weddingDeposit = false, clos
     {weddingDeposit && <p className="field-help">This will log a Wedding budget entry and add the amount shown below to Joint Savings.</p>}
     {me && !item && !person
       ? <input type="hidden" name="personId" value={me}/>
-      : <label>Who is adding this?<select name="personId" value={personId} onChange={e => setPersonId(e.target.value)}>{PEOPLE.map(person => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label>}
+      : <label>Who is adding this?<select name="personId" value={personId} onChange={e => choosePerson(e.target.value)}>{PEOPLE.map(person => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label>}
     <div className="form-row">
       <label>Transaction date<input name="date" type="date" defaultValue={item?.date ?? date ?? localDate()} required/></label>
       <label>Transaction time<input name="time" type="time" defaultValue={initialTime} required/></label>
@@ -46,8 +59,55 @@ function EntryForm({ state, item, date, person, me, weddingDeposit = false, clos
     {type === 'expense' && category && <div className="contribution-preview"><PiggyBank size={19}/><span>
       {PEOPLE.find(p => p.id === personId).name}’s category rate · {rate / 100}%{goalId && ' to ' + state.goals.find(g => g.id === goalId)?.name}
     </span><strong>{money(projected)}</strong></div>}
-    {type === 'income' && item?.type === 'income' && entryContribution(item) > 0 && <p className="field-help">Saving this as raw income will reverse its previous {money(entryContribution(item))} savings contribution.</p>}
+    {type === 'income' && <IncomeSplit state={state} shares={shares} setShares={setShares} units={units} person={PEOPLE.find(p => p.id === personId)}/>}
+    {type === 'income' && item?.type === 'income' && !item.splits && entryContribution(item) > 0 && <p className="field-help">Saving this as income will reverse its previous {money(entryContribution(item))} savings contribution.</p>}
   </ActionForm>;
+}
+
+// What the income form shows for each category: ticked and the percentage. An entry being
+// edited keeps its recorded split; otherwise the person's saved shares are used.
+function initialShares(state, personId, item) {
+  const saved = item?.type === 'income' && item.personId === personId ? item.splits ?? [] : null;
+  return Object.fromEntries(state.categories.map(category => {
+    const split = saved?.find(row => row.categoryId === category.id);
+    const rate = split?.rate ?? category.incomeShares?.[personId] ?? 0;
+    return [category.id, { on: saved ? Boolean(split) : rate > 0, pct: String(rate / 100) }];
+  }));
+}
+
+function shareRates(state, shares) {
+  return Object.fromEntries(state.categories.map(category => {
+    try { return [category.id, decimalUnits(shares[category.id]?.pct || '0', 10_000)]; }
+    catch { throw new Error(`Enter a share from 0% to 100% for ${category.name}, with up to two decimals.`); }
+  }));
+}
+
+function IncomeSplit({ state, shares, setShares, units, person }) {
+  const set = (id, change) => setShares(current => ({ ...current, [id]: { ...current[id], ...change } }));
+  let total = 0, totalRate = 0;
+  const rows = state.categories.map(category => {
+    let rate = null;
+    try { rate = decimalUnits(shares[category.id]?.pct || '0', 10_000); } catch { /* Shown as invalid; reported on save. */ }
+    const on = shares[category.id]?.on;
+    const amount = rate === null ? 0 : contribution(units, rate);
+    if (on && rate !== null) { total += amount; totalRate += rate; }
+    return { category, rate, on, amount };
+  });
+  const over = totalRate > 10_000;
+  return <fieldset className="income-split">
+    <legend>Split into budgets</legend>
+    <p className="field-help">Tick a budget to set its share aside for this month. Wedding’s share also adds to joint savings. Percentages are saved for {person.name}.</p>
+    <div className="split-rows">{rows.map(({ category, rate, on, amount }) => <div className={on ? 'split-row on' : 'split-row'} key={category.id}>
+      <label className="split-check"><input type="checkbox" checked={Boolean(on)} onChange={e => set(category.id, { on: e.target.checked })}/>
+        <span className="color-dot" style={{ backgroundColor: categoryColor(category) }}/>{category.name}</label>
+      <label className="split-pct"><input type="number" min="0" max="100" step="0.01" inputMode="decimal" aria-label={`${category.name} share of income (%)`} aria-invalid={rate === null}
+        value={shares[category.id]?.pct ?? '0'} onChange={e => set(category.id, { pct: e.target.value, on: e.target.value !== '' && Number(e.target.value) > 0 ? true : on })}/>%</label>
+      <strong className="split-amount">{on ? money(amount) : '—'}</strong>
+    </div>)}</div>
+    <p className={over ? 'split-total over' : 'split-total'}>{over
+      ? `The ticked shares add up to ${totalRate / 100}%. Lower one to 100% or less.`
+      : <>Splitting <strong>{money(total)}</strong> ({totalRate / 100}%) · <strong>{money(Math.max(0, units - total))}</strong> left unassigned</>}</p>
+  </fieldset>;
 }
 
 function titleValue(value, label) {

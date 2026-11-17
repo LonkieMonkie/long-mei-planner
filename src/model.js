@@ -54,7 +54,13 @@ export function decimalUnits(value, max = 100_000_000_000, signed = false) {
 }
 
 export const contribution = (amount, rate) => Math.floor((amount * rate + 5_000) / 10_000);
-export const entryContribution = entry => entry.goalId ? contribution(entry.amount, entry.rate ?? 0) : 0;
+// The joint-goal deposits an entry makes: an expense's savings rate, an older income entry's
+// recorded rate, or the Wedding share of a split income.
+export function goalShares(entry) {
+  if (entry.splits) return entry.splits.filter(split => split.goalId).map(({ goalId, amount, rate }) => ({ goalId, amount, rate }));
+  return entry.goalId ? [{ goalId: entry.goalId, amount: contribution(entry.amount, entry.rate ?? 0), rate: entry.rate ?? 0 }] : [];
+}
+export const entryContribution = entry => goalShares(entry).reduce((sum, share) => sum + share.amount, 0);
 export const categoryColors = { indigo: '#7964da', blue: '#5283c7', rose: '#bc5f88', mint: '#3c9676' };
 export const categoryColor = category => parseAccent(category.color) ?? categoryColors[category.tone] ?? DEFAULT_ACCENT;
 export const isWeddingName = name => name.trim().toLowerCase() === 'wedding';
@@ -85,6 +91,27 @@ export function savingsRule(category, personId, goals, previous) {
   return rate > 0 && goals.some(goal => goal.id === goalId) ? { rate, goalId } : { rate: 0, goalId: '' };
 }
 
+// Turns the ticked categories of an income form into stored splits. Each share is rounded
+// to the cent on its own; Wedding's share also counts toward the Wedding goal.
+export function incomeSplits(raw, amount, state) {
+  if (!raw) return [];
+  const chosen = typeof raw === 'string' ? JSON.parse(raw) : raw;
+  const seen = new Set();
+  const splits = [];
+  for (const { categoryId, rate } of chosen) {
+    const category = state.categories.find(item => item.id === categoryId);
+    if (!category || seen.has(categoryId)) continue;
+    if (!Number.isInteger(rate) || rate < 0 || rate > 10_000) throw new Error(`Enter a share from 0% to 100% for ${category.name}.`);
+    seen.add(categoryId);
+    if (!rate) continue;
+    const split = { categoryId, rate, amount: contribution(amount, rate) };
+    if (categoryId === WEDDING_CATEGORY_ID && state.goals.some(goal => goal.id === WEDDING_GOAL_ID)) split.goalId = WEDDING_GOAL_ID;
+    splits.push(split);
+  }
+  if (splits.reduce((sum, split) => sum + split.rate, 0) > 10_000) throw new Error('The ticked shares add up to more than 100%. Lower one before saving.');
+  return splits;
+}
+
 export function entryFromFields(fields, state, previous, now = new Date().toISOString()) {
   const person = PEOPLE.find(p => p.id === fields.personId);
   const type = fields.type;
@@ -99,10 +126,11 @@ export function entryFromFields(fields, state, previous, now = new Date().toISOS
   const time = fields.time || (previous ? entryTime(previous) : localTime(new Date(now)));
   if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time)) throw new Error('Choose a valid transaction time.');
   const allocation = type === 'expense' ? savingsRule(category, person.id, state.goals, previous) : {};
+  const splits = type === 'income' ? incomeSplits(fields.splits, amount, state) : [];
   return {
     id: previous?.id ?? crypto.randomUUID(),
     personId: person.id, type, categoryId: type === 'expense' ? category.id : '',
-    source, date: fields.date, time, amount, ...allocation,
+    source, date: fields.date, time, amount, ...allocation, ...(splits.length ? { splits } : {}),
     createdAt: previous?.createdAt ?? now, editedAt: previous ? now : null,
   };
 }
@@ -111,16 +139,20 @@ export function summarize(state, month) {
   const people = Object.fromEntries(PEOPLE.map(p => [p.id, { income: 0, spent: 0, allocated: 0 }]));
   const goals = Object.fromEntries(state.goals.map(g => [g.id, { total: 0, long: 0, mei: 0 }]));
   const spentByCategory = new Map();
+  const fundedByCategory = new Map();
   let income = 0, spent = 0, allocated = 0, totalContributions = 0;
   for (const entry of state.entries) {
-    const amount = entryContribution(entry);
-    const goal = goals[entry.goalId];
-    if (goal) {
-      goal.total += amount;
-      goal[entry.personId] += amount;
-      totalContributions += amount;
+    let amount = 0;
+    for (const share of goalShares(entry)) {
+      const goal = goals[share.goalId];
+      if (!goal) continue;
+      goal.total += share.amount;
+      goal[entry.personId] += share.amount;
+      amount += share.amount;
     }
+    totalContributions += amount;
     if (month && !entry.date.startsWith(month + '-')) continue;
+    for (const split of entry.splits ?? []) fundedByCategory.set(split.categoryId, (fundedByCategory.get(split.categoryId) ?? 0) + split.amount);
     const person = people[entry.personId];
     if (entry.type === 'income') {
       income += entry.amount;
@@ -130,14 +162,12 @@ export function summarize(state, month) {
       person.spent += entry.amount;
       spentByCategory.set(entry.categoryId, (spentByCategory.get(entry.categoryId) ?? 0) + entry.amount);
     }
-    if (goal) {
-      allocated += amount;
-      person.allocated += amount;
-    }
+    allocated += amount;
+    person.allocated += amount;
   }
   const budgeted = state.categories.reduce((sum, c) => sum + c.limit, 0);
   return {
-    people, goals, spentByCategory, income, spent, allocated, budgeted, totalContributions,
+    people, goals, spentByCategory, fundedByCategory, income, spent, allocated, budgeted, totalContributions,
     jointBalance: state.savingsAdjustment + totalContributions,
   };
 }
@@ -154,6 +184,7 @@ export function calendarItems(state, dates) {
     if (!items) continue;
     const category = categories.get(entry.categoryId);
     const deposited = entryContribution(entry);
+    const goalNames = goalShares(entry).map(share => state.goals.find(goal => goal.id === share.goalId)?.name).filter(Boolean).join(', ');
     const time = entryTime(entry);
     const weddingDeposit = entry.categoryId === WEDDING_CATEGORY_ID && deposited > 0;
     if (!weddingDeposit) {
@@ -163,7 +194,7 @@ export function calendarItems(state, dates) {
     if (deposited > 0) {
       items.push({ id: 'deposit:' + entry.id, kind: 'deposit', title: weddingDeposit ? 'Wedding deposit' : 'Joint deposit',
         color: weddingDeposit ? categoryColor(category ?? weddingCategory) : undefined,
-        entry, time, amount: deposited, goal: state.goals.find(goal => goal.id === entry.goalId)?.name });
+        entry, time, amount: deposited, goal: goalNames });
     }
   }
   for (const debt of state.debts) {
@@ -248,6 +279,14 @@ export function readState(storage) {
   // Automatic biweekly paydays were removed; repeating events replace them.
   delete state.firstPaydays;
   state.events = state.events.map(normalizeEvent);
+  for (const category of state.categories) {
+    const shares = Object.fromEntries(PEOPLE.map(({ id }) => [id, category.incomeShares?.[id]]).filter(([, rate]) => Number.isInteger(rate) && rate > 0 && rate <= 10_000));
+    if (Object.keys(shares).length) category.incomeShares = shares; else delete category.incomeShares;
+  }
+  for (const entry of state.entries) {
+    if (entry.splits !== undefined && !(Array.isArray(entry.splits) && entry.splits.every(split =>
+      typeof split?.categoryId === 'string' && Number.isInteger(split.rate) && Number.isSafeInteger(split.amount)))) delete entry.splits;
+  }
   state.accentColor = parseAccent(state.accentColor) ?? DEFAULT_ACCENT;
   // The garden redesign made sage the default. Move the old default over once; later choices are kept.
   if (state.theme !== 'garden' && state.accentColor === LEGACY_ACCENT) state.accentColor = DEFAULT_ACCENT;

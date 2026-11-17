@@ -140,10 +140,11 @@ export function Budget({ state, totals, month, save, open, edit, remove }) {
                   if (isWeddingName(name)) throw new Error('Wedding is already a permanent category.');
                   save(current => ({ ...current, categories: current.categories.map(item => item.id === category.id ? { ...item, name } : item) }), 'Category renamed');
                 }}/>}
-              <div className="category-rates">{PEOPLE.map(person => <span key={person.id}>{person.name} {(category.savingsRates?.[person.id] ?? 0) / 100}%</span>)}</div>
+              <div className="category-rates"><span>Savings: {PEOPLE.map(person => `${person.name} ${(category.savingsRates?.[person.id] ?? 0) / 100}%`).join(' · ')}</span>
+                {category.incomeShares && <span>Income share: {PEOPLE.map(person => `${person.name} ${(category.incomeShares[person.id] ?? 0) / 100}%`).join(' · ')}</span>}</div>
             </div>
             <div className="category-meter"><Progress value={spent} max={category.limit} color={spent <= category.limit ? categoryColor(category) : undefined} tone="rose" label={category.name + ' spent'}/></div>
-            <div className="category-figures"><strong className={spent > category.limit ? 'negative' : ''}>{money(spent)}</strong><span> / {money(category.limit)}</span></div>
+            <div className="category-figures"><strong className={spent > category.limit ? 'negative' : ''}>{money(spent)}</strong><span> / {money(category.limit)}</span>{totals.fundedByCategory.has(category.id) && <small className="set-aside">{money(totals.fundedByCategory.get(category.id))} set aside</small>}</div>
             <div className="category-actions">
               <button className="icon-btn bordered" aria-label={`Edit ${category.name} budget limit`} title="Edit budget limit" onClick={() => open({ kind: 'limit', item: category })}><Pencil size={14}/></button>
               <button className="icon-btn bordered" aria-label={`${category.name} category settings`} title="Category color and savings rates" onClick={() => open({ kind: 'category', item: category })}><SlidersHorizontal size={15}/></button>
