@@ -1,3 +1,5 @@
+import { DEFAULT_ACCENT, parseAccent } from './appearance.js';
+
 export const STORAGE_KEY = 'our-little-life.dashboard.v2';
 export const LEGACY_KEY = 'our-little-life.v1';
 export const PEOPLE = [
@@ -46,7 +48,7 @@ export function freshData() {
       { id: 'bills', name: 'Bills & subscriptions', limit: 0, icon: 'receipt', tone: 'mint' },
     ],
     goals: [{ id: 'wedding', name: 'Wedding', target: 3_000_000 }],
-    entries: [], events: [], googleUrl: '', savingsAdjustment: 0,
+    entries: [], events: [], googleUrl: '', savingsAdjustment: 0, accentColor: DEFAULT_ACCENT,
   };
 }
 
@@ -164,5 +166,6 @@ export function readState(storage) {
     throw new Error('The saved dashboard could not be read.');
   }
   if (state.googleUrl) state.googleUrl = googleEmbed(state.googleUrl);
+  state.accentColor = parseAccent(state.accentColor) ?? DEFAULT_ACCENT;
   return state;
 }

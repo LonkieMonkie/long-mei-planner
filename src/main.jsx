@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { CalendarDays, CircleCheck, Download, Heart, LayoutGrid, PiggyBank, Plus, Wallet } from 'lucide-react';
+import { CalendarDays, CircleCheck, Download, Heart, LayoutGrid, PiggyBank, Plus, Settings as SettingsIcon, Wallet } from 'lucide-react';
 import { Budget, Dashboard, MonthSelector, Savings } from './finance.jsx';
 import { CalendarView } from './calendar.jsx';
 import { Dialogs } from './dialogs.jsx';
+import { Settings } from './settings.jsx';
+import { accentStyles } from './appearance.js';
 import { Person } from './ui.jsx';
 import { LEGACY_KEY, PEOPLE, STORAGE_KEY, contribution, freshData, localDate, readState, summarize } from './model.js';
 import { workbook } from './excel.js';
@@ -14,6 +16,7 @@ const views = [
   { id: 'budget', name: 'Budget', icon: Wallet, subtitle: 'Track income, spending and savings for each of you.' },
   { id: 'calendar', name: 'Calendar', icon: CalendarDays, subtitle: 'See your local events and Google Calendar in one view.' },
   { id: 'savings', name: 'Joint Savings', icon: PiggyBank, subtitle: 'See what each of you has put toward your shared goals.' },
+  { id: 'settings', name: 'Settings', icon: SettingsIcon, subtitle: 'Personalize your dashboard.' },
 ];
 
 function getView() {
@@ -96,7 +99,7 @@ function App() {
   const addEntry = () => setModal({ kind: 'entry', date: active === 'budget' && month !== localDate().slice(0, 7) ? month + '-01' : localDate() });
   const edit = item => setModal({ kind: 'entry', item });
   const remove = item => setModal({ kind: 'delete-entry', item });
-  return <div className="app-shell">
+  return <div className="app-shell" style={accentStyles(state.accentColor)}>
     <aside className="sidebar">
       <a href="#dashboard" className="brand"><span className="brand-mark"><Heart size={21} strokeWidth={2.3}/></span><span>Our Little Life<small>Long &amp; Mei</small></span></a>
       <nav aria-label="Main navigation">{views.map(({ id, name, icon: Icon }) => <a key={id} href={`#${id}`} aria-current={active === id ? 'page' : undefined} className={active === id ? 'active' : ''}><Icon size={19}/><span>{name}</span></a>)}</nav>
@@ -108,13 +111,13 @@ function App() {
     <main className="main-content" id="main">
       <header className="page-header">
         <div><div className="date-kicker"><CalendarDays size={14}/>{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</div><h1>{view.name}</h1><p>{view.subtitle}</p></div>
-        <div className="header-actions">
+        {active !== 'settings' && <div className="header-actions">
           {active === 'budget' && <MonthSelector {...{ month, setMonth }}/>}
           <button className="btn secondary export-btn" onClick={() => exportExcel(state, totals)}><Download size={16}/> Export Excel</button>
           {active === 'calendar'
             ? <button className="btn primary" onClick={() => setModal({ kind: 'event', date: selectedDay })}><Plus size={17}/> Add event</button>
             : <button className="btn primary" onClick={addEntry}><Plus size={17}/> Add entry</button>}
-        </div>
+        </div>}
       </header>
       {error && <p className="inline-alert" role="alert">Saved data could not be loaded. {error}</p>}
       {legacy && <p className="inline-alert">An earlier encrypted planner was found in this browser. Its data is separate from this dashboard.</p>}
@@ -123,6 +126,7 @@ function App() {
         {active === 'budget' && <Budget {...{ state, totals, month, save, edit, remove }} open={setModal}/>}
         {active === 'calendar' && <CalendarView {...{ state, save }} open={setModal} month={calendarMonth} setMonth={setCalendarMonth} selected={selectedDay} setSelected={setSelectedDay}/>}
         {active === 'savings' && <Savings {...{ state, totals, edit, remove }} open={setModal}/>}
+        {active === 'settings' && <Settings key={state.accentColor} accent={state.accentColor} save={save}/>}
       </div>
     </main>
     {modal && <Dialogs key={modal.kind + (modal.item?.id ?? '')} {...{ modal, state, totals, save }} close={() => setModal(null)} onEventSaved={date => { setSelectedDay(date); setCalendarMonth(date.slice(0, 7)); }}/>}
