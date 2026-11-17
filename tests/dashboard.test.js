@@ -218,3 +218,11 @@ test('goal forecast projects the reach date from the last 90 days of deposits', 
   assert.equal(goalForecast([deposit('2026-11-16', 1)], goal, 1, today).status, 'far');
   assert.equal(goalForecast([deposit('2026-12-01', 100_000)], goal, 100_000, today).status, 'no-data');
 });
+
+test('income can be saved without a source and is labelled Income', () => {
+  const state = freshData();
+  const entry = entryFromFields(fields({ type: 'income', source: '   ' }), state);
+  assert.equal(entry.source, 'Income');
+  assert.equal(entryFromFields(fields({ type: 'income', source: 'Paycheck' }), state).source, 'Paycheck');
+  assert.throws(() => entryFromFields(fields({ categoryId: '' }), state), /budget category/);
+});

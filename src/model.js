@@ -89,8 +89,10 @@ export function entryFromFields(fields, state, previous, now = new Date().toISOS
   const person = PEOPLE.find(p => p.id === fields.personId);
   const type = fields.type;
   const category = state.categories.find(c => c.id === fields.categoryId);
-  const source = type === 'expense' ? category?.name : String(fields.source ?? '').trim().slice(0, 100);
-  if (!person || !['income', 'expense'].includes(type) || !source) throw new Error('Choose a person and enter a source.');
+  // An income source is optional; unnamed income is labelled "Income".
+  const source = type === 'expense' ? category?.name : String(fields.source ?? '').trim().slice(0, 100) || 'Income';
+  if (!person || !['income', 'expense'].includes(type)) throw new Error('Choose who is adding this.');
+  if (!source) throw new Error('Choose a budget category.');
   const amount = decimalUnits(fields.amount);
   if (amount <= 0) throw new Error('Enter an amount greater than zero.');
   if (!isDateKey(fields.date)) throw new Error('Choose a valid transaction date.');

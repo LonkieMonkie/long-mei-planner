@@ -40,7 +40,7 @@ function EntryForm({ state, item, date, person, me, weddingDeposit = false, clos
       <label>Transaction time<input name="time" type="time" defaultValue={initialTime} required/></label>
     </div>
     {weddingDeposit ? <input type="hidden" name="categoryId" value={WEDDING_CATEGORY_ID}/> : type === 'income'
-      ? <label key="income">Income source<input name="source" defaultValue={item?.type === 'income' ? item.source : ''} placeholder="e.g. Paycheck" maxLength={100} required/></label>
+      ? <label key="income">Income source (optional)<input name="source" defaultValue={item?.type === 'income' && item.source !== 'Income' ? item.source : ''} placeholder="e.g. Paycheck" maxLength={100}/></label>
       : <label key="expense">Budget category<select name="categoryId" value={categoryId} onChange={e => setCategoryId(e.target.value)} required><option value="" disabled>Select category</option>{state.categories.map(category => <option value={category.id} key={category.id}>{category.name}</option>)}</select></label>}
     <label>Amount ($)<input name="amount" type="number" step="0.01" min="0.01" max="1000000000" placeholder="0.00" value={amount} onChange={e => setAmount(e.target.value)} required/></label>
     {type === 'expense' && category && <div className="contribution-preview"><PiggyBank size={19}/><span>
