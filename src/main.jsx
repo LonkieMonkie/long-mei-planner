@@ -5,7 +5,7 @@ import { Budget, Dashboard, MonthSelector, Savings } from './finance.jsx';
 import { CalendarView } from './calendar.jsx';
 import { DebtTracker } from './debts.jsx';
 import { Dialogs } from './dialogs.jsx';
-import { Settings } from './settings.jsx';
+import { Settings, TreeSettings } from './settings.jsx';
 import { accentStyles } from './appearance.js';
 import { PlantPair } from './plants.jsx';
 import { LEGACY_KEY, PEOPLE, STORAGE_KEY, categoryColor, entryContribution, entryTime, freshData, localDate, readState, summarize } from './model.js';
@@ -135,7 +135,7 @@ function App() {
         {active === 'calendar' && <CalendarView state={state} open={setModal} month={calendarMonth} setMonth={setCalendarMonth} selected={selectedDay} setSelected={setSelectedDay}/>}
         {active === 'savings' && <Savings {...{ state, totals, edit, remove }} open={setModal}/>}
         {active === 'debts' && <DebtTracker debts={state.debts} open={setModal}/>}
-        {active === 'settings' && <Settings key={state.accentColor} accent={state.accentColor} save={save}/>}
+        {active === 'settings' && <><Settings key={state.accentColor} accent={state.accentColor} save={save}/><TreeSettings key={state.tree.kind + state.tree.perMeter} tree={state.tree} save={save}/></>}
       </div>
     </main>
     {modal && <Dialogs key={modal.kind + (modal.item?.id ?? '')} {...{ modal, state, totals, save }} close={() => setModal(null)} onEventSaved={date => { setSelectedDay(date); setCalendarMonth(date.slice(0, 7)); }}/>}

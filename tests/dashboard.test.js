@@ -156,3 +156,14 @@ test('a calendar debt payment uses the settlement date and time, including acros
   assert.equal(payment.time, localTime(new Date(paidAt)));
   assert.equal(payment.debt.amount, 4500);
 });
+
+test('savings tree grows one meter per configured amount and reads saved settings safely', async () => {
+  const { normalizeTree, skyAt, treeMeters } = await import('../src/tree-model.js');
+  assert.equal(treeMeters(250_000, 100_000), 2.5);
+  assert.equal(treeMeters(-5_000, 100_000), 0);
+  assert.deepEqual(normalizeTree({ kind: 'palm', perMeter: 0 }), { kind: 'cherry', perMeter: 100_000 });
+  assert.deepEqual(normalizeTree({ kind: 'maple', perMeter: 50_000 }), { kind: 'maple', perMeter: 50_000 });
+  assert.equal(skyAt(new Date(2026, 5, 21, 12)).night, 0);
+  assert.equal(skyAt(new Date(2026, 5, 21, 1)).night, 1);
+  assert.ok(skyAt(new Date(2026, 5, 21, 12)).sun && !skyAt(new Date(2026, 5, 21, 1)).sun);
+});

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ArrowDownLeft, ArrowDownRight, ArrowRight, CalendarDays, ChevronLeft, ChevronRight, CircleDollarSign, Landmark, LockKeyhole, Pencil, PiggyBank, Plus, SlidersHorizontal, Target, Wallet } from 'lucide-react';
 import { PEOPLE, WEDDING_CATEGORY_ID, categoryColor, dateFromKey, isWeddingName, localDate, money, shiftMonth, shortDate } from './model.js';
 import { PlantPair } from './plants.jsx';
+import { SavingsTree } from './tree.jsx';
 import { CATEGORY_ICONS, Empty, EntryHistory, InlineName, PanelHeading, Person, Progress } from './ui.jsx';
 
 export function MonthSelector({ month, setMonth }) {
@@ -145,6 +146,7 @@ export function Savings({ state, totals, open, edit, remove }) {
         {PEOPLE.map(person => <div className="contribution-person" key={person.id}><Person id={person.id}/><strong>{money(Object.values(totals.goals).reduce((sum, goal) => sum + goal[person.id], 0))}</strong></div>)}
       </section>
     </div>
+    <SavingsTree balance={totals.jointBalance} tree={state.tree}/>
     <section className="card">
       <PanelHeading title="Savings goals" subtitle="Each goal adds up the contributions assigned to it." action={<div className="flex flex-wrap gap-2">
         <button className="btn secondary" onClick={() => open({ kind: 'goal' })}><Plus size={17}/> Add goal</button>

@@ -1,4 +1,5 @@
 import { DEFAULT_ACCENT, LEGACY_ACCENT, parseAccent } from './appearance.js';
+import { DEFAULT_TREE, normalizeTree } from './tree-model.js';
 
 export const STORAGE_KEY = 'our-little-life.dashboard.v2';
 export const LEGACY_KEY = 'our-little-life.v1';
@@ -71,7 +72,7 @@ export function freshData() {
     ],
     goals: [{ ...weddingGoal }],
     entries: [], events: [], debts: [], firstPaydays: { ...FIRST_PAYDAYS },
-    savingsAdjustment: 0, accentColor: DEFAULT_ACCENT, theme: 'garden',
+    savingsAdjustment: 0, accentColor: DEFAULT_ACCENT, theme: 'garden', tree: { ...DEFAULT_TREE },
   };
 }
 
@@ -262,5 +263,6 @@ export function readState(storage) {
   // The garden redesign made sage the default. Move the old default over once; later choices are kept.
   if (state.theme !== 'garden' && state.accentColor === LEGACY_ACCENT) state.accentColor = DEFAULT_ACCENT;
   state.theme = 'garden';
+  state.tree = normalizeTree(state.tree);
   return state;
 }

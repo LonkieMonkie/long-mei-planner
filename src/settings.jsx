@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { Check, RotateCcw } from 'lucide-react';
 import { DEFAULT_ACCENT, LEGACY_ACCENT, accentStyles, parseAccent } from './appearance.js';
-import { PanelHeading } from './ui.jsx';
+import { ActionForm, PanelHeading } from './ui.jsx';
+import { decimalUnits } from './model.js';
+import { TREE_KINDS } from './tree-model.js';
 
 const presets = [
   ['Sage', DEFAULT_ACCENT], ['Rose', '#aa416e'], ['Lavender', LEGACY_ACCENT],
@@ -59,5 +61,28 @@ export function Settings({ accent, save }) {
         <button className="btn primary">Save accent color</button>
       </div>
     </form>
+  </section>;
+}
+
+const swatches = { cherry: '#f7b6c8', oak: '#5f9c5a', maple: '#e8743b', pine: '#2f6b4f' };
+
+export function TreeSettings({ tree, save }) {
+  const [kind, setKind] = useState(tree.kind);
+  return <section className="card settings-card">
+    <PanelHeading title="Savings tree" subtitle="Choose the tree that grows on the Joint Savings page, and how much each meter is worth."/>
+    <ActionForm label="Save tree" onSave={fields => {
+      const perMeter = decimalUnits(fields.perMeter, 100_000_000);
+      if (perMeter < 100) throw new Error('Enter at least $1 per meter.');
+      save(current => ({ ...current, tree: { kind, perMeter } }), 'Savings tree saved');
+    }}>
+      <fieldset className="accent-presets">
+        <legend>Type of tree</legend>
+        <div className="tree-options">{TREE_KINDS.map(item => <button type="button" key={item.id} className="tree-option"
+          aria-pressed={kind === item.id} onClick={() => setKind(item.id)}>
+          <span className={`tree-swatch ${item.id}`} style={{ '--leaf': swatches[item.id] }}/>{item.name}
+        </button>)}</div>
+      </fieldset>
+      <label>Savings for each meter ($)<input name="perMeter" type="number" min="1" max="1000000" step="0.01" defaultValue={tree.perMeter / 100} required/></label>
+    </ActionForm>
   </section>;
 }
