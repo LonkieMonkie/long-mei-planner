@@ -238,7 +238,7 @@ export function calendarItems(state, dates) {
   }
   for (const [date, items] of byDate) {
     for (const event of state.events) {
-      if (occursOn(event, date)) items.push({ id: 'event:' + event.id + ':' + date, kind: 'event', title: event.title, time: event.time, event, date });
+      if (occursOn(event, date)) items.push({ id: 'event:' + event.id + ':' + date, kind: 'event', title: event.title, time: event.time, event, date, color: event.color });
     }
   }
   for (const items of byDate.values()) items.sort((a, b) => (a.time ?? '').localeCompare(b.time ?? ''));

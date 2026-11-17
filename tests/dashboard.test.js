@@ -354,3 +354,14 @@ test('profile pictures accept only small image data URLs for known profiles', as
   assert.deepEqual(cleanAvatars({ long: jpeg, mei: 'javascript:alert(1)', stranger: jpeg }), { long: jpeg });
   assert.deepEqual(readLocalAvatars({ getItem: () => 'not json' }), {});
 });
+
+test('events keep a valid color and drop anything else', async () => {
+  const { eventFromFields, normalizeEvent } = await import('../src/events.js');
+  assert.equal(eventFromFields({ title: 'Dinner', date: '2026-12-01', color: '#E0718B' }).color, '#e0718b');
+  assert.equal('color' in eventFromFields({ title: 'Dinner', date: '2026-12-01', color: 'red; background:url(x)' }), false);
+  assert.equal('color' in eventFromFields({ title: 'Dinner', date: '2026-12-01', color: '' }), false);
+  assert.equal('color' in normalizeEvent({ id: 'a', title: 'x', date: '2026-12-01', color: 'blue' }), false);
+  const state = freshData();
+  state.events = [{ id: 'a', title: 'Dinner', date: '2026-12-01', color: '#5a9ccc' }];
+  assert.equal(calendarItems(state, ['2026-12-01']).get('2026-12-01')[0].color, '#5a9ccc');
+});

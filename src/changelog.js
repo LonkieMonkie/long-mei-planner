@@ -1,6 +1,10 @@
 // What changed in each release, newest first. Add an entry and bump "version" in
 // package.json together; a test checks that they match.
 export const CHANGELOG = [
+  { version: '2.10.0', date: '2026-11-17', changes: [
+    'Choose a color for each calendar event, from presets or any color you like.',
+    'Fixed: expense category colors now show on the calendar again.',
+  ] },
   { version: '2.9.0', date: '2026-11-17', changes: [
     'New My savings budget category: tick it when splitting income and its share goes into My Savings.',
     'The Personal remainder stays a budget set-aside and no longer counts as savings.',

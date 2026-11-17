@@ -81,7 +81,7 @@ export function CalendarView({ state, open, month, setMonth, selected, setSelect
           </button>;
         })}
       </div>
-      <div className="calendar-legend">{Object.values(styles).map(({ tone, label }) => <span key={label}><i className={`day-event ${tone}`}/>{label}{label === 'Expense' && ' · category color'}</span>)}</div>
+      <div className="calendar-legend">{Object.values(styles).map(({ tone, label }) => <span key={label}><i className={`day-event ${tone}`}/>{label}{label === 'Expense' && ' · category color'}{label === 'Event' && ' · your color'}</span>)}</div>
     </section>
     <section className="card agenda-card">
       <PanelHeading title={shortDate(selected)} subtitle="Day’s agenda"/>

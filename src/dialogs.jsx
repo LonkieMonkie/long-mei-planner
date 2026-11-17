@@ -3,7 +3,7 @@ import { ArrowDownLeft, ArrowUpRight, PiggyBank } from 'lucide-react';
 import { PEOPLE, PERSONAL_CATEGORY_ID, SAVINGS_CATEGORY_ID, WEDDING_CATEGORY_ID, categoryColor, dateFromKey, contribution, debtFromFields, decimalUnits, entryContribution, entryFromFields, incomeSplits, entryTime, localDate, localTime, money, shortDate, savingsRule, setJointBalance, settleDebt } from './model.js';
 import { ActionForm, Modal } from './ui.jsx';
 import { CategoryForm } from './category-form.jsx';
-import { REPEATS, deleteEvent, editEvent, eventFromFields, occurrenceIndex } from './events.js';
+import { EVENT_COLORS, REPEATS, deleteEvent, editEvent, eventFromFields, occurrenceIndex } from './events.js';
 import { savingsFromFields } from './personal-savings.js';
 
 function EntryForm({ state, item, date, person, me, weddingDeposit = false, close, save }) {
@@ -245,6 +245,7 @@ function EventForm({ date, item, close, done, onEventSaved }) {
   const [ends, setEnds] = useState(item?.repeat?.ends ?? 'never');
   const remaining = item?.repeat?.ends === 'after' ? Math.max(1, item.repeat.count - Math.max(0, occurrenceIndex(item, occurrence))) : 10;
   const [count, setCount] = useState(String(item?.repeat?.count ?? 10));
+  const [color, setColor] = useState(item?.color ?? '');
   const repeating = scope !== 'one';
   const unit = REPEATS.find(rule => rule.id === freq).unit;
   const day = dateFromKey(occurrence).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -254,7 +255,7 @@ function EventForm({ date, item, close, done, onEventSaved }) {
     if (item?.repeat?.ends === 'after') setCount(String(which === 'following' ? remaining : item.repeat.count));
   }
   return <ActionForm cancel={close} label={item ? 'Save changes' : 'Save event'} onSave={fields => {
-    const edited = eventFromFields(repeating ? fields : { ...fields, freq: 'none' });
+    const edited = eventFromFields({ ...fields, color, ...(repeating ? {} : { freq: 'none' }) });
     done(current => {
       if (!item) return { ...current, events: [...current.events, edited] };
       const original = current.events.find(event => event.id === item.id);
@@ -290,6 +291,17 @@ function EventForm({ date, item, close, done, onEventSaved }) {
       </div>}
       {freq !== 'none' && <p className="field-help">Repeats every {unit} from {start ? shortDate(start) : 'the date above'}{ends === 'never' ? ', with no end date' : ''}.{freq === 'monthly' || freq === 'yearly' ? ' Dates past the end of a shorter month move to its last day.' : ''}</p>}
     </>}
+    <fieldset className="event-colors">
+      <legend>Color</legend>
+      <div className="event-swatches">
+        <button type="button" className="event-swatch default" aria-pressed={!color} aria-label="Default color" title="Default" onClick={() => setColor('')}/>
+        {EVENT_COLORS.map(([name, value]) => <button type="button" key={value} className="event-swatch" style={{ background: value }}
+          aria-pressed={color === value} aria-label={name} title={name} onClick={() => setColor(value)}/>)}
+        <label className="event-swatch custom" title="Pick any color" style={color && !EVENT_COLORS.some(([, value]) => value === color) ? { background: color } : undefined}>
+          <input type="color" aria-label="Pick any color" value={color || '#4c8363'} onChange={e => setColor(e.target.value)}/>
+        </label>
+      </div>
+    </fieldset>
     <label>Description<textarea name="description" rows={3} maxLength={1000} defaultValue={item?.description} placeholder="Optional details"/></label>
   </ActionForm>;
 }
