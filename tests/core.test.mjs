@@ -1,0 +1,17 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {writeFile} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {initialState,allocate,upsertBudget,savingsTotals,validateState,addDays,monday} from '../dist/core.js';
+import {newVault,encryptVault,decryptVault} from '../dist/vault.js';
+import {workbook} from '../dist/excel.js';
+const percentages={needs:50,personal:15,joint:10,debt:15,fun:10};
+const budget=(income=300)=>({start:'2026-11-16',savedAt:new Date().toISOString(),people:{Long:{income,percentages},Mei:{income:500,percentages}}});
+test('allocates every cent, including fractional pennies and zero income',()=>{assert.deepEqual(allocate(300,percentages),{needs:15000,personal:4500,joint:3000,debt:4500,fun:3000});for(const n of [0,.01,.03,.07,123.45,9999.99])assert.equal(Object.values(allocate(n,percentages)).reduce((a,b)=>a+b),Math.round(n*100));});
+test('rejects invalid amounts and allocations',()=>{for(const n of [-1,NaN,Infinity,1e12])assert.throws(()=>allocate(n,percentages));assert.throws(()=>allocate(100,{...percentages,fun:15}));assert.throws(()=>allocate(100,{...percentages,fun:-10}));});
+test('resaving a period replaces totals and rejects overlapping periods',()=>{const s=initialState();upsertBudget(s,budget());assert.equal(savingsTotals(s).Together,8000);upsertBudget(s,budget(600));assert.equal(s.budgets.length,1);assert.equal(savingsTotals(s).Together,11000);assert.throws(()=>upsertBudget(s,{...budget(),start:'2026-11-20'}));upsertBudget(s,{...budget(),start:'2026-11-30'});assert.equal(s.budgets.length,2);validateState(s);});
+test('calendar periods cross year boundaries correctly',()=>{assert.equal(addDays('2026-12-25',13),'2027-01-07');assert.equal(monday('2026-11-22'),'2026-11-16');});
+test('encrypted save round trip, wrong password, tampering and unique IV',async()=>{const s=initialState();upsertBudget(s,budget());s.reflections=[{id:'r',date:'2026-11-16',owner:'Together',mood:'Happy',text:'Private reflection <script> ♡',savedAt:new Date().toISOString()}];const v=await newVault('test-only-long-random-passphrase');const envelope=await encryptVault(s,v.key,v.salt);assert.ok(!JSON.stringify(envelope).includes('Private reflection'));assert.notEqual(envelope.iv,(await encryptVault(s,v.key,v.salt)).iv);const decoded=await decryptVault(envelope,'test-only-long-random-passphrase');assert.deepEqual(decoded.data,s);await assert.rejects(decryptVault(envelope,'wrong passphrase'));const tampered={...envelope,ciphertext:'AAAA'+envelope.ciphertext.slice(4)};await assert.rejects(decryptVault(tampered,'test-only-long-random-passphrase'));await assert.rejects(newVault('short'));});
+test('backup schema validation rejects invalid amounts and arbitrary objects',()=>{assert.throws(()=>validateState({}));const s=initialState();s.goals.Long.opening=-1;assert.throws(()=>validateState(s));});
+test('exports an OOXML ZIP, with formula-looking strings kept as text',async()=>{const blob=workbook([{name:'Budget',rows:[['Income','Note'],[123.45,'=HYPERLINK("https://example.com")'],[0,'Long & Mei ♡']]},{name:'Reflections',rows:[['Text'],['<script>not executable</script>']]}]);const buffer=Buffer.from(await blob.arrayBuffer());assert.equal(buffer.subarray(0,2).toString(),'PK');assert.ok(buffer.toString().includes('t="inlineStr"'));assert.ok(!buffer.toString().includes('<f>'));await writeFile(join(tmpdir(),'long-mei-test-export.xlsx'),buffer);});
