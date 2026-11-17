@@ -252,14 +252,17 @@ function EventForm({ date, item, close, done, onEventSaved }) {
     }, item ? 'Event updated' : edited.repeat ? 'Repeating event saved' : 'Event saved');
     onEventSaved(edited.date);
   }}>
-    {series && <div className="edit-scope">
-      <span>Change</span>
-      <div className="segmented" role="group" aria-label="Which dates to change">
-        <button type="button" aria-pressed={scope === 'all'} onClick={() => chooseScope('all')}>Every date</button>
-        <button type="button" aria-pressed={scope === 'one'} onClick={() => chooseScope('one')}>Only {day}</button>
-        {occurrence > item.date && <button type="button" aria-pressed={scope === 'following'} onClick={() => chooseScope('following')}>{day} and later</button>}
-      </div>
-    </div>}
+    {series && <fieldset className="edit-scope">
+      <legend>Which dates should change?</legend>
+      {[
+        ['all', 'Every date', 'The whole repeating series'],
+        ['one', `Only ${day}`, 'Just this one; the rest stay the same'],
+        ...(occurrence > item.date ? [['following', `${day} and later`, 'Earlier dates stay the same']] : []),
+      ].map(([value, label, hint]) => <label key={value} className="scope-option">
+        <input type="radio" name="scope" value={value} checked={scope === value} onChange={() => chooseScope(value)}/>
+        <span><strong>{label}</strong><small>{hint}</small></span>
+      </label>)}
+    </fieldset>}
     <label>Title<input name="title" maxLength={100} defaultValue={item?.title} placeholder="e.g. Rent due" required autoFocus/></label>
     <div className="form-row">
       <label>{series && scope === 'all' ? 'First date' : 'Date'}<input name="date" type="date" value={start} onChange={e => setStart(e.target.value)} required/></label>
@@ -276,8 +279,6 @@ function EventForm({ date, item, close, done, onEventSaved }) {
       </div>}
       {freq !== 'none' && <p className="field-help">Repeats every {unit} from {start ? shortDate(start) : 'the date above'}{ends === 'never' ? ', with no end date' : ''}.{freq === 'monthly' || freq === 'yearly' ? ' Dates past the end of a shorter month move to its last day.' : ''}</p>}
     </>}
-    {series && scope === 'one' && <p className="field-help">Only {shortDate(occurrence)} changes. The other dates in the series stay as they are.</p>}
-    {series && scope === 'following' && <p className="field-help">Dates before {shortDate(occurrence)} stay as they are. From then on, the event follows these details.</p>}
     <label>Description<textarea name="description" rows={3} maxLength={1000} defaultValue={item?.description} placeholder="Optional details"/></label>
   </ActionForm>;
 }
