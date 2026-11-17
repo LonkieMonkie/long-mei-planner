@@ -1,79 +1,34 @@
-# Our Little Life — Long & Mei
+# Our Little Life · Long & Mei
 
-A cozy, responsive couple planner. No subscriptions, third-party scripts, external fonts, build dependencies, or backend required.
+A local dashboard for monthly budgets, joint goals and calendar events. Built with React, Tailwind CSS, Lucide React and Vite.
 
-## What it does
+## Open in VS Code
 
-- Biweekly take-home income inputs for Long and Mei.
-- Adjustable percentages for essentials, personal savings, joint savings, debt payments and little joys. Each person's percentages must total 100%.
-- Live weekly and biweekly savings calculations. Money is allocated in integer cents using largest-remainder rounding, so no cents disappear.
-- Click-to-save budgets, saved-period history and editing. Resaving the same period replaces it; overlapping periods are rejected.
-- Separate personal savings goals and a shared savings pot. Planned balances are opening balances plus allocations from all saved periods, not bank balances or confirmed transfers. Include each existing dollar only once in opening balances.
-- Daily habits for Long, Mei or Together, weekly views, check-ins saved on click, and reversible archiving with history preserved.
-- Editable reflections with author, mood, reflection date and last-saved timestamp.
-- Current date based on the device's timezone.
-- Genuine Excel `.xlsx` export with six worksheets. Numeric amounts are numeric cells; user-written text is stored as text, never spreadsheet formulas.
-- Password-encrypted local saving, encrypted backup downloads and restore, passphrase changes, manual locking and five-minute idle locking.
-
-## Publish on GitHub Pages
-
-1. Create a new repository named `long-mei-planner` on your GitHub account. A public repository works with GitHub Free. Source code contains no passwords or personal financial records. A private repository may require a paid GitHub plan for Pages.
-2. Upload **the contents of this folder** (including `dist`, `tests`, `package.json`, and `.github/workflows/pages.yml`) to its `main` branch. Do not upload the ZIP file itself.
-3. Open **Settings → Pages → Build and deployment → Source**, then select **GitHub Actions**.
-4. Open **Actions → Publish planner to GitHub Pages → Run workflow**. Later pushes to `main` deploy automatically.
-5. Open the website URL shown by the successful deployment. Use HTTPS. Create your own long, unique shared passphrase on the site; no passphrase is embedded in the code.
-
-If uploading through GitHub's web interface doesn't preserve the hidden `.github` folder, use Git or GitHub Desktop to publish the complete folder. Alternatively, copy the contents of `dist` to a new repository root, include `.nojekyll`, and set **Settings → Pages → Deploy from a branch → main / (root)**; the automated tests/workflow then aren't part of deployment.
-
-The Pages workflow uses only static assets from `dist`. The local `.openai` directory is preview configuration, ignored by Git and not needed on GitHub.
-
-## First use
-
-1. Create a shared passphrase of at least 12 characters (several random words are better). Store it in a password manager.
-2. Set opening balances and goals in **Savings & dreams** and save them.
-3. Enter both biweekly incomes and percentages under **Our budget**. Save each 14-day period once, editing that period when needed.
-4. Check off habits, write reflections and save them.
-5. Download an **encrypted backup** regularly from **Privacy & backup**.
-
-## Sharing with Mei / switching devices
-
-This version is **local-first, with no automatic cloud sync**. Each browser has an independent encrypted copy. Share the downloaded encrypted backup with Mei and enter its passphrase on Mei's device to restore it. Share the passphrase separately. Restoring replaces that browser's data; it does not merge independently edited copies. Keep one primary copy and exchange the newest backup when switching who edits.
-
-GitHub Pages serves only HTML/CSS/JavaScript; it does not store private database records. Real-time multi-device collaboration would require a separately provisioned authenticated backend. Do not put financial data, account passwords, API secrets, backup files, or exported workbooks in the repository.
-
-## Security and limitations
-
-- Data at rest uses Web Crypto AES-256-GCM with a fresh random 96-bit IV per save, a random 128-bit salt, and PBKDF2-SHA256 with 600,000 iterations to derive a non-extractable encryption key.
-- The passphrase and decrypted data remain in memory only while unlocked. Only the encrypted envelope is written to localStorage. The app makes no network requests with planner data; CSP disables outbound connections and third-party scripts.
-- Strong encryption is not a guarantee against hacking. Weak passphrases can be guessed offline. Compromised devices, malicious extensions and modified website code can read information while unlocked. Protect the GitHub account with two-factor authentication and restrict repository write access.
-- The public website code and welcome screen are visible to visitors. Visitors cannot access another browser's local data through this app. This is data encryption, not a server-side account login or private website gate.
-- No password reset or recovery is possible. Lost passphrase = inaccessible data. Old backup files retain their old passphrase after a password change.
-- Clearing site data, changing browsers or devices, and private browsing can remove or isolate saved records. Keep independent encrypted backups. Moving the site to a different domain requires backup and restore.
-- The planner locks after five minutes without interaction, discarding unsaved edits. Save before stepping away. Browser close/refresh warns about unsaved edits where supported.
-- Concurrent tabs use the Web Locks API when available and compare the saved encrypted envelope before writing. A stale tab must lock and unlock before saving. Older browsers without Web Locks have only best-effort conflict detection; use one tab.
-- Excel exports are **not encrypted**. Anyone with the downloaded workbook can read its contents. Keep them private. Export contains saved data only, not unsaved form edits.
-- Data is shared within the couple's vault: this version does not offer separate permissions or private-to-one-person notes.
-- Amounts are USD. Weekly values are biweekly amounts divided by two, displayed to the nearest cent; separate rounded weekly amounts can differ from their combined total by one cent.
-
-## Develop and test
-
-Requires Node.js 22+ for tests. No package installation is needed.
+Open this project folder in VS Code and run these commands in **Terminal → New Terminal** with Node.js 22 or newer.
 
 ```sh
-npm test
-python3 -m http.server 8080 --directory dist
+npm ci
+npm run dev
 ```
 
-Open `http://localhost:8080`. ES modules and Web Crypto require HTTPS or localhost; do not open `index.html` as a `file://` URL.
+Open the localhost URL shown in the terminal. Edit files in `src`. The production command `npm run build` rebuilds `dist` from those files.
 
-The welcome screen has a clearly labeled demo with sample data. Demo edits never modify the encrypted planner.
+## Update the existing GitHub Pages site
 
-## Source map
+1. Extract this archive and copy its contents, including `.github`, into your VS Code clone of `LonkieMonkie/long-mei-planner`. Replace the old workflow when prompted. Preserve your clone’s `.git` directory.
+2. Run `npm ci`, `npm test`, and `npm run build` in the clone. Vite replaces the old static files in `dist`. Commit the source, workflow, lockfile, and the removal of any old tracked `dist` files. The workflow generates the new `dist` when deploying.
+3. In GitHub, set **Settings → Pages → Source → GitHub Actions**. Commit and push to `main` from VS Code. Check the **Deploy planner** workflow under **Actions**.
 
-- `dist/index.html`, `dist/style.css`: accessible responsive shell, visual design and content security policy.
-- `dist/app.js`: planner UI, save actions, backup/restore and inactivity lock.
-- `dist/core.js`: calculation, dates, state validation and saved-period rules.
-- `dist/vault.js`: encryption and passphrase key derivation.
-- `dist/excel.js`: dependency-free OOXML ZIP workbook writer.
-- `tests/core.test.mjs`: money, date, encryption, validation and Excel tests.
-- `.github/workflows/pages.yml`: testing and deployment workflow.
+## How totals work
+
+- Budget limits recur monthly. Expenses are counted by transaction date and current category ID. The history retains the category name recorded when an entry was saved.
+- Each entry belongs to Long or Mei. Its contribution is its amount times its own savings percentage, rounded once to the nearest cent. Goals and balances derive from the same entries. Editing replaces that entry’s record, including its last-edited timestamp, and deleting reverses its effect.
+- Editing the joint balance records the difference between the stated balance and the contributions already logged. Later entry changes still adjust that balance by the exact difference. The manual adjustment belongs to the overall balance.
+- Paste a Google Calendar public embed URL or a share link with a calendar `cid`. The Google calendar appears in its own iframe. Local events appear in your planner calendar and do not write to Google.
+- Export Excel downloads entries, category limits, goal totals and local events as a readable workbook.
+
+## Local data
+
+This version stores its records in ordinary browser localStorage. Each browser and website origin has its own copy. The Long and Mei profiles categorize contributions within that copy. Clearing site storage erases its data. Only the configured Google Calendar link is loaded from Google.
+
+The dashboard uses a new storage key. It leaves data in the earlier encrypted planner untouched and does not import those records. Export or back up the earlier planner before deploying this version if you need to retain access to those records.
