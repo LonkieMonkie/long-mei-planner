@@ -119,6 +119,38 @@ button.primary:hover { background: var(--accent-deep); }
 .category-figures { @apply text-right text-sm whitespace-nowrap tabular-nums; }.category-figures span { @apply text-xs text-muted; }
 .rename { @apply inline-flex max-w-full items-center gap-2 break-words text-left text-sm font-semibold; }.rename svg { @apply shrink-0 text-muted; }.rename:hover { @apply text-accent; }
 .inline-name input { @apply w-full px-2 py-1.5; }
+.category-actions { @apply flex flex-wrap items-center justify-end gap-1; }
+.category-rates { @apply mt-1 flex flex-wrap gap-x-2 text-[11px] text-muted; }
+.category-icon, .category-calendar {
+  background: color-mix(in srgb, var(--category-color) 22%, white);
+  color: color-mix(in srgb, var(--category-color) 30%, #242438);
+}
+.category-color-fields legend { @apply mb-2 text-xs font-semibold; }
+.category-color-layout { @apply flex flex-wrap items-center gap-4; }
+.category-color-inputs { @apply grid gap-2; }
+.category-color-inputs input[type=range] { @apply w-full p-0; accent-color: var(--color-accent); }
+.color-wheel {
+  position: relative;
+  width: 104px;
+  height: 104px;
+  border-radius: 50%;
+  border: 1px solid var(--color-line);
+  background: linear-gradient(rgb(0 0 0 / var(--wheel-darkness)), rgb(0 0 0 / var(--wheel-darkness))),
+    radial-gradient(circle closest-side, white, transparent),
+    conic-gradient(from 90deg, red, yellow, lime, cyan, blue, magenta, red);
+  cursor: crosshair;
+  touch-action: none;
+}
+.color-wheel span {
+  position: absolute;
+  width: 13px;
+  height: 13px;
+  transform: translate(-50%, -50%);
+  border: 2px solid white;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px #242438;
+  pointer-events: none;
+}
 .profile-grid, .savings-layout { @apply grid gap-5; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .profile-card dl { @apply grid grid-cols-3 gap-2 text-center; }.profile-card dl > div { @apply rounded-lg bg-canvas px-2 py-2.5; }
 .profile-card dt { @apply text-[11px] text-muted; }.profile-card dd { @apply mt-1 break-all text-sm font-semibold tabular-nums; }
@@ -136,6 +168,16 @@ button.primary:hover { background: var(--accent-deep); }
 .balance-button { @apply absolute top-4 right-4 border border-white/30 text-white; }.balance-button:hover { @apply bg-white/15; }
 .balance-breakdown { @apply mt-2.5 flex flex-wrap gap-4 border-t border-white/25 pt-3 text-xs text-[#eee9ff]; }.balance-breakdown b { @apply pl-1 text-white; }
 .contribution-person { @apply flex items-center justify-between gap-3 border-t border-line py-3 text-sm; }
+.debt-balance > p:last-child { @apply mt-2; }
+.debt-direction { @apply inline-flex flex-wrap items-center gap-1.5 text-xs text-muted; }
+.debt-direction .avatar { @apply size-6 text-[10px]; }
+.debt-row { @apply flex flex-wrap items-start justify-between gap-3 border-t border-line py-3.5; }
+.debt-details { @apply min-w-0; }
+.debt-details h3 { @apply mb-1.5 wrap-anywhere text-sm font-semibold; }
+.debt-details p { @apply mt-1.5 text-xs text-muted; }
+.debt-action { @apply ml-auto flex flex-wrap items-center justify-end gap-2; }
+.debt-action > strong { @apply text-sm tabular-nums; }
+.debt-paid { @apply inline-flex items-center gap-1 rounded-lg bg-[#e4f5ec] px-2 py-1.5 text-xs text-[#277857]; }
 .goals-grid { @apply grid gap-4; grid-template-columns: repeat(auto-fit, minmax(min(100%, 267px), 1fr)); }
 .goal-people { @apply mt-3 grid gap-2 border-t pt-3; border-color: var(--accent-border); }.goal-people > span { @apply flex items-center justify-between gap-2 text-xs; }.goal-people .avatar { @apply size-6 text-[10px]; }
 .calendar-layout { @apply grid gap-5; grid-template-columns: minmax(0, 2fr) minmax(230px, .85fr); }.calendar-controls { @apply flex items-center gap-1.5; }
@@ -143,10 +185,17 @@ button.primary:hover { background: var(--accent-deep); }
 .calendar-day { @apply flex min-h-[67px] min-w-0 flex-col items-start gap-1 overflow-hidden border-t border-r border-line px-1.5 py-1 text-left text-xs; }
 .calendar-day:nth-child(7n) { border-right: 0; }.calendar-day.outside { @apply bg-canvas text-muted; }.calendar-day:hover, .calendar-day.selected { background: var(--accent-tint); }.calendar-day.selected { box-shadow: inset 0 0 0 1px var(--color-accent); }.calendar-day:focus-visible { outline-offset: -2px; }
 .day-number { @apply grid size-5 place-items-center rounded-full; }.today-cell .day-number { @apply bg-accent font-semibold text-white; }
-.day-event { @apply block w-full truncate rounded px-1 py-0.5 text-[9px] font-semibold; background: var(--accent-border); color: var(--accent-deep); }.day-more { @apply px-1 text-[9px] text-muted; }
+.day-event { @apply block w-full truncate rounded px-1 py-0.5 text-[9px] font-semibold; }.day-more { @apply px-1 text-[9px] text-muted; }
+.day-event.indigo { background: var(--accent-tint); color: var(--accent-deep); }
+.calendar-legend { @apply mt-3 flex flex-wrap gap-x-3 gap-y-1.5 text-[11px] text-muted; }
+.calendar-legend > span { @apply inline-flex items-center gap-1.5; }
+.calendar-legend .day-event { @apply size-2.5 rounded-full p-0; }
 .agenda-event { @apply mb-3 grid grid-cols-[minmax(0,1fr)_auto] items-start rounded-xl border border-line p-3; }.agenda-event h3 { @apply wrap-anywhere text-sm font-semibold; }.event-time { @apply mt-1 flex items-center gap-1 text-xs text-muted; }.event-description { @apply col-span-2 mt-2 whitespace-pre-wrap wrap-anywhere text-xs text-muted; }
-.google-form { @apply flex flex-wrap items-center gap-2; }.google-input { @apply flex min-w-[min(100%,260px)] flex-1 items-center gap-2 rounded-lg border border-line px-3 text-muted; }.google-input input { @apply w-full border-0 px-0; }.google-frame { @apply mt-4 h-[530px] w-full rounded-xl border border-line; }
-.form-error { @apply text-xs text-[#a5254a]; }.google-card .form-error { @apply mt-2; }
+.calendar-agenda-item { @apply gap-x-2; grid-template-columns: auto minmax(0, 1fr) auto; }
+.calendar-agenda-item .event-description { grid-column: 2 / -1; }
+.calendar-agenda-item .event-time { @apply flex-wrap; }
+.agenda-actions { @apply mt-3 flex flex-wrap gap-2; }
+.form-error { @apply text-xs text-[#a5254a]; }
 .modal { @apply fixed inset-0 m-auto max-h-[calc(100dvh-32px)] w-[min(510px,calc(100%-28px))] overflow-y-auto rounded-2xl border border-line bg-white p-5 text-ink shadow-xl; }
 .modal::backdrop { background: #201a3e73; backdrop-filter: blur(2px); }
 .modal-heading { @apply mb-4 flex items-center justify-between gap-3; }.modal-heading h2 { @apply text-xl font-bold tracking-tight; }
@@ -174,7 +223,7 @@ button.primary:hover { background: var(--accent-deep); }
 @media (max-width: 820px) {
   .sidebar { @apply sticky top-0 w-full gap-2 border-r-0 border-b px-4 py-2; }
   .brand { @apply mb-0 gap-2 text-sm; }.brand-mark { @apply size-8; }.brand-mark svg { @apply size-4; }.brand small { @apply text-[10px]; }
-  .sidebar nav { @apply grid grid-cols-5 gap-1; }.sidebar nav a { @apply justify-center gap-1.5 px-1 py-2 text-[11px]; }.sidebar nav a svg { @apply size-4 shrink-0; }
+  .sidebar nav { @apply grid grid-cols-6 gap-1; }.sidebar nav a { @apply justify-center gap-1.5 px-1 py-2 text-[11px]; }.sidebar nav a svg { @apply size-4 shrink-0; }
   .side-bottom { display: none; }.main-content { @apply ml-0 px-4 pt-5; }
   .banner-art { right: -4%; transform: translateY(-50%) scale(.82); }
 }
@@ -188,6 +237,7 @@ button.primary:hover { background: var(--accent-deep); }
   .banner-art { right: -111px; top: 60%; transform: translateY(-50%) scale(.57); opacity: .66; }
   .stats-grid { @apply grid-cols-2 gap-2.5; }.stats-grid > :last-child { @apply col-span-2; }.stat strong { @apply text-[21px]; }.stat small { @apply text-[10px]; }
   .category-row { grid-template-columns: auto minmax(0,1fr) auto auto; gap: 6px; }.category-meter { display: none; }.category-figures { @apply text-xs; }.category-figures span { @apply text-[10px]; }
+  .category-actions { @apply flex-col; }
   .calendar-day { @apply min-h-[52px] px-0.5; }.calendar-weekday { @apply text-[10px]; }.day-event { @apply px-0.5; }
   .toast { @apply right-3 bottom-3; }
 }

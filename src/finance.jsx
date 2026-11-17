@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { ArrowDownLeft, ArrowDownRight, ArrowRight, ArrowUpRight, CalendarDays, ChevronLeft, ChevronRight, CircleDollarSign, Heart, Landmark, Pencil, PiggyBank, Plus, Target, Wallet } from 'lucide-react';
-import { PEOPLE, dateFromKey, decimalUnits, localDate, money, shiftMonth, shortDate, summarize } from './model.js';
+import { ArrowDownLeft, ArrowDownRight, ArrowRight, CalendarDays, ChevronLeft, ChevronRight, CircleDollarSign, Heart, Landmark, Pencil, PiggyBank, Plus, SlidersHorizontal, Target, Wallet } from 'lucide-react';
+import { PEOPLE, categoryColor, dateFromKey, localDate, money, shiftMonth, shortDate } from './model.js';
 import { CATEGORY_ICONS, Empty, EntryHistory, InlineName, PanelHeading, Person, Progress } from './ui.jsx';
 
 export function MonthSelector({ month, setMonth }) {
@@ -15,16 +15,20 @@ function Stat({ icon: Icon, tone, label, value, caption }) {
   return <article className="card stat"><span className={`icon-tile ${tone}`}><Icon size={19}/></span><p>{label}</p><strong>{money(value)}</strong><small>{caption}</small></article>;
 }
 
+function CategoryIcon({ category, size }) {
+  const Icon = CATEGORY_ICONS[category.icon] ?? CATEGORY_ICONS.tag;
+  return <span className="icon-tile category-icon" style={{ '--category-color': categoryColor(category) }}><Icon size={size}/></span>;
+}
+
 function CategorySummary({ state, totals, navigate }) {
   return <section className="card budget-summary">
     <PanelHeading title="Budget overview" subtitle="Spending by category this month" action={<button className="text-link" onClick={() => navigate('budget')}>View budget <ArrowRight size={14}/></button>}/>
     <div className="budget-summary-list">{state.categories.slice(0, 4).map(category => {
-      const Icon = CATEGORY_ICONS[category.icon] ?? CATEGORY_ICONS.tag;
       const spent = totals.spentByCategory.get(category.id) ?? 0;
       return <div className="summary-category" key={category.id}>
-        <span className={`icon-tile ${category.tone}`}><Icon size={16}/></span>
+        <CategoryIcon category={category} size={16}/>
         <div><div className="summary-category-label"><strong>{category.name}</strong><span>{money(spent, true)} <small>/ {money(category.limit, true)}</small></span></div>
-          <Progress value={spent} max={category.limit} tone={category.tone} label={category.name + ' spent'}/></div>
+          <Progress value={spent} max={category.limit} color={categoryColor(category)} label={category.name + ' spent'}/></div>
       </div>;
     })}</div>
   </section>;
@@ -83,18 +87,23 @@ export function Budget({ state, totals, month, save, open, edit, remove }) {
       <Stat icon={CircleDollarSign} tone={totals.spent > totals.budgeted ? 'rose' : 'mint'} label="Budget remaining" value={totals.budgeted - totals.spent} caption="Budget limits minus recorded expenses"/>
     </div>
     <section className="card">
-      <PanelHeading title="Budget categories" subtitle="Click a category name to rename it. Limits apply to each month."
+      <PanelHeading title="Budget categories" subtitle="Click a name to rename it. Use category settings to change its color and savings rates."
         action={<button className="btn secondary" onClick={() => open({ kind: 'category' })}><Plus size={17}/> Add Category</button>}/>
       <div className="category-table">
         {state.categories.map(category => {
           const spent = totals.spentByCategory.get(category.id) ?? 0;
-          const Icon = CATEGORY_ICONS[category.icon] ?? CATEGORY_ICONS.tag;
           return <div className="category-row" key={category.id}>
-            <span className={`icon-tile ${category.tone}`}><Icon size={18}/></span>
-            <InlineName name={category.name} save={name => save(current => ({ ...current, categories: current.categories.map(item => item.id === category.id ? { ...item, name } : item) }), 'Category renamed')}/>
-            <div className="category-meter"><Progress value={spent} max={category.limit} tone={spent > category.limit ? 'rose' : category.tone} label={category.name + ' spent'}/></div>
+            <CategoryIcon category={category} size={18}/>
+            <div className="category-name">
+              <InlineName name={category.name} save={name => save(current => ({ ...current, categories: current.categories.map(item => item.id === category.id ? { ...item, name } : item) }), 'Category renamed')}/>
+              <div className="category-rates">{PEOPLE.map(person => <span key={person.id}>{person.name} {(category.savingsRates?.[person.id] ?? 0) / 100}%</span>)}</div>
+            </div>
+            <div className="category-meter"><Progress value={spent} max={category.limit} color={spent <= category.limit ? categoryColor(category) : undefined} tone="rose" label={category.name + ' spent'}/></div>
             <div className="category-figures"><strong className={spent > category.limit ? 'negative' : ''}>{money(spent)}</strong><span> / {money(category.limit)}</span></div>
-            <button className="icon-btn bordered" aria-label={`Edit ${category.name} budget limit`} title="Edit budget limit" onClick={() => open({ kind: 'limit', item: category })}><Pencil size={14}/></button>
+            <div className="category-actions">
+              <button className="icon-btn bordered" aria-label={`Edit ${category.name} budget limit`} title="Edit budget limit" onClick={() => open({ kind: 'limit', item: category })}><Pencil size={14}/></button>
+              <button className="icon-btn bordered" aria-label={`${category.name} category settings`} title="Category color and savings rates" onClick={() => open({ kind: 'category', item: category })}><SlidersHorizontal size={15}/></button>
+            </div>
           </div>;
         })}
       </div>

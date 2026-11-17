@@ -1,21 +1,23 @@
 import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { CalendarDays, CircleCheck, Download, Heart, LayoutGrid, PiggyBank, Plus, Settings as SettingsIcon, Wallet } from 'lucide-react';
+import { CalendarDays, CircleCheck, Download, Heart, LayoutGrid, PiggyBank, Plus, Scale, Settings as SettingsIcon, Wallet } from 'lucide-react';
 import { Budget, Dashboard, MonthSelector, Savings } from './finance.jsx';
 import { CalendarView } from './calendar.jsx';
+import { DebtTracker } from './debts.jsx';
 import { Dialogs } from './dialogs.jsx';
 import { Settings } from './settings.jsx';
 import { accentStyles } from './appearance.js';
 import { Person } from './ui.jsx';
-import { LEGACY_KEY, PEOPLE, STORAGE_KEY, contribution, freshData, localDate, readState, summarize } from './model.js';
+import { LEGACY_KEY, PEOPLE, STORAGE_KEY, categoryColor, entryContribution, freshData, localDate, readState, summarize } from './model.js';
 import { workbook } from './excel.js';
 import './style.css';
 
 const views = [
   { id: 'dashboard', name: 'Dashboard', icon: LayoutGrid, subtitle: 'Your finances and plans, together in one place.' },
   { id: 'budget', name: 'Budget', icon: Wallet, subtitle: 'Track income, spending and savings for each of you.' },
-  { id: 'calendar', name: 'Calendar', icon: CalendarDays, subtitle: 'See your local events and Google Calendar in one view.' },
+  { id: 'calendar', name: 'Calendar', icon: CalendarDays, subtitle: 'See upcoming paydays, income, expenses and events.' },
   { id: 'savings', name: 'Joint Savings', icon: PiggyBank, subtitle: 'See what each of you has put toward your shared goals.' },
+  { id: 'debts', name: 'Debt Tracker', icon: Scale, subtitle: 'Track what you owe each other and record payments.' },
   { id: 'settings', name: 'Settings', icon: SettingsIcon, subtitle: 'Personalize your dashboard.' },
 ];
 
@@ -37,10 +39,11 @@ function exportExcel(state, totals) {
   const blob = workbook([
     { name: 'Entry history', rows: [
       ['Profile', 'Transaction date', 'Type', 'Source', 'Amount (USD)', 'Joint goal', 'Savings %', 'Contribution (USD)', 'Logged at', 'Last edited at'],
-      ...state.entries.map(entry => [names.get(entry.personId), entry.date, entry.type, entry.source, entry.amount / 100, goals.get(entry.goalId) ?? '', entry.rate / 100, contribution(entry.amount, entry.rate) / 100, entry.createdAt, entry.editedAt ?? '']),
+      ...state.entries.map(entry => [names.get(entry.personId), entry.date, entry.type, entry.source, entry.amount / 100, goals.get(entry.goalId) ?? '', entry.rate === undefined ? '' : entry.rate / 100, entryContribution(entry) / 100, entry.createdAt, entry.editedAt ?? '']),
     ] },
     { name: 'Budget categories', rows: [
-      ['Category', 'Monthly limit (USD)'], ...state.categories.map(category => [category.name, category.limit / 100]),
+      ['Category', 'Monthly limit (USD)', 'Color', 'Long savings %', 'Mei savings %', 'Joint goal'],
+      ...state.categories.map(category => [category.name, category.limit / 100, categoryColor(category), (category.savingsRates?.long ?? 0) / 100, (category.savingsRates?.mei ?? 0) / 100, goals.get(category.savingsGoalId) ?? '']),
     ] },
     { name: 'Joint savings', rows: [
       ['Goal', 'Target (USD)', 'Long (USD)', 'Mei (USD)', 'Total (USD)'],
@@ -49,6 +52,11 @@ function exportExcel(state, totals) {
     ] },
     { name: 'Local events', rows: [
       ['Title', 'Date', 'Time', 'Description'], ...state.events.map(event => [event.title, event.date, event.time, event.description]),
+    ] },
+    { name: 'Debts', rows: [
+      ['Description', 'Owed by', 'Owed to', 'Amount (USD)', 'Logged by', 'Logged at', 'Settled at'],
+      ...state.debts.map(debt => [debt.description, names.get(debt.debtorId), names.get(debt.creditorId), debt.amount / 100,
+        names.get(debt.addedBy), debt.createdAt, debt.settledAt ?? '']),
     ] },
   ]);
   const url = URL.createObjectURL(blob);
@@ -114,9 +122,9 @@ function App() {
         {active !== 'settings' && <div className="header-actions">
           {active === 'budget' && <MonthSelector {...{ month, setMonth }}/>}
           <button className="btn secondary export-btn" onClick={() => exportExcel(state, totals)}><Download size={16}/> Export Excel</button>
-          {active === 'calendar'
-            ? <button className="btn primary" onClick={() => setModal({ kind: 'event', date: selectedDay })}><Plus size={17}/> Add event</button>
-            : <button className="btn primary" onClick={addEntry}><Plus size={17}/> Add entry</button>}
+          {active === 'calendar' && <button className="btn primary" onClick={() => setModal({ kind: 'event', date: selectedDay })}><Plus size={17}/> Add event</button>}
+          {active === 'debts' && <button className="btn primary" onClick={() => setModal({ kind: 'debt' })}><Plus size={17}/> Log debt</button>}
+          {active !== 'calendar' && active !== 'debts' && <button className="btn primary" onClick={addEntry}><Plus size={17}/> Add entry</button>}
         </div>}
       </header>
       {error && <p className="inline-alert" role="alert">Saved data could not be loaded. {error}</p>}
@@ -124,8 +132,9 @@ function App() {
       <div className="page-body">
         {active === 'dashboard' && <Dashboard state={state} totals={totals} open={setModal} navigate={navigate}/>}
         {active === 'budget' && <Budget {...{ state, totals, month, save, edit, remove }} open={setModal}/>}
-        {active === 'calendar' && <CalendarView {...{ state, save }} open={setModal} month={calendarMonth} setMonth={setCalendarMonth} selected={selectedDay} setSelected={setSelectedDay}/>}
+        {active === 'calendar' && <CalendarView state={state} open={setModal} month={calendarMonth} setMonth={setCalendarMonth} selected={selectedDay} setSelected={setSelectedDay}/>}
         {active === 'savings' && <Savings {...{ state, totals, edit, remove }} open={setModal}/>}
+        {active === 'debts' && <DebtTracker debts={state.debts} open={setModal}/>}
         {active === 'settings' && <Settings key={state.accentColor} accent={state.accentColor} save={save}/>}
       </div>
     </main>

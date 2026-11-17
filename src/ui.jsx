@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowDownLeft, ArrowUpRight, Car, Ellipsis, Pencil, Receipt, ShoppingBasket, Tag, Trash2, Utensils, X } from 'lucide-react';
-import { PEOPLE, contribution, money, timestamp } from './model.js';
+import { ArrowDownLeft, ArrowUpRight, Car, Pencil, Receipt, ShoppingBasket, Tag, Trash2, Utensils, X } from 'lucide-react';
+import { PEOPLE, categoryColor, entryContribution, money, shortDate, timestamp } from './model.js';
 
 export const CATEGORY_ICONS = { basket: ShoppingBasket, car: Car, utensils: Utensils, receipt: Receipt, tag: Tag };
 
@@ -17,10 +17,10 @@ export function Empty({ icon: Icon, children, action }) {
   return <div className="empty-state"><span className="icon-tile indigo"><Icon size={19}/></span><p>{children}</p>{action}</div>;
 }
 
-export function Progress({ value, max, tone = 'indigo', label }) {
+export function Progress({ value, max, tone = 'indigo', label, color }) {
   const percent = max ? Math.min(100, Math.max(0, 100 * value / max)) : 0;
   return <div className="progress" role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(percent)}>
-    <span className={tone} style={{ width: percent + '%' }}/>
+    <span className={tone} style={{ width: percent + '%', backgroundColor: color }}/>
   </div>;
 }
 
@@ -55,12 +55,13 @@ export function EntryHistory({ state, entries, onEdit, onDelete, compact = false
     <thead><tr><th scope="col">Source</th><th scope="col">Added by</th><th scope="col">Logged at</th><th scope="col">Amount</th><th scope="col">Joint contribution</th>{!compact && <th scope="col">Actions</th>}</tr></thead>
     <tbody>{entries.map(entry => {
       const FlowIcon = entry.type === 'income' ? ArrowDownLeft : ArrowUpRight;
+      const category = state.categories.find(item => item.id === entry.categoryId);
       return <tr key={entry.id}>
-        <td><div className="entry-source"><span className={`icon-tile ${entry.type === 'income' ? 'mint' : 'rose'}`}><FlowIcon size={17}/></span><div><strong>{entry.source}</strong><small>{entry.type === 'income' ? 'Income' : 'Expense'}</small></div></div></td>
+        <td><div className="entry-source"><span className={`icon-tile ${category ? 'category-icon' : entry.type === 'income' ? 'mint' : 'rose'}`} style={category ? { '--category-color': categoryColor(category) } : undefined}><FlowIcon size={17}/></span><div><strong>{entry.source}</strong><small>{entry.type === 'income' ? 'Income' : 'Expense'} · {shortDate(entry.date)}</small></div></div></td>
         <td><Person id={entry.personId}/></td>
         <td>{timestamp(entry.createdAt)}{entry.editedAt && <small title={timestamp(entry.editedAt)}>Edited {timestamp(entry.editedAt)}</small>}</td>
         <td className={entry.type === 'income' ? 'positive' : ''}><strong>{entry.type === 'income' ? '+' : '−'}{money(entry.amount)}</strong></td>
-        <td>{entry.goalId ? <><strong>{money(contribution(entry.amount, entry.rate))}</strong><small>{goals.get(entry.goalId)} · {entry.rate / 100}%</small></> : '—'}</td>
+        <td>{entry.goalId && entry.rate ? <><strong>{money(entryContribution(entry))}</strong><small>{goals.get(entry.goalId)} · {entry.rate / 100}%{entry.type === 'income' && ' · Legacy'}</small></> : '—'}</td>
         {!compact && <td><div className="entry-actions">
           <button className="icon-btn" aria-label={`Edit ${entry.source} entry`} title="Edit entry" onClick={() => onEdit(entry)}><Pencil size={15}/></button>
           <button className="icon-btn danger" aria-label={`Delete ${entry.source} entry`} title="Delete entry" onClick={() => onDelete(entry)}><Trash2 size={16}/></button>
