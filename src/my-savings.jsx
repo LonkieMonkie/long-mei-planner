@@ -5,9 +5,10 @@ import { personalSavings } from './personal-savings.js';
 import { Empty, PanelHeading } from './ui.jsx';
 
 const kinds = {
-  in: { label: 'Added', tone: 'mint', Icon: ArrowDownLeft },
-  out: { label: 'Taken out', tone: 'rose', Icon: ArrowUpRight },
+  in: { label: 'Added', tone: 'income', Icon: ArrowDownLeft },
+  out: { label: 'Taken out', tone: 'expense', Icon: ArrowUpRight },
   income: { label: 'Saved from income', tone: 'indigo', Icon: Wallet },
+  budget: { label: 'Logged in Personal saving', tone: 'indigo', Icon: Wallet },
 };
 
 export function MySavings({ state, me, open, editEntry }) {
@@ -26,14 +27,14 @@ export function MySavings({ state, me, open, editEntry }) {
           <button className="btn balance-button" onClick={() => open({ kind: 'saving', person: personId })}><Plus size={15}/> Add money</button>
           <button className="btn balance-button" onClick={() => open({ kind: 'saving', person: personId, direction: 'out' })}><ArrowUpRight size={15}/> Take out</button>
         </div>
-        <div className="balance-breakdown"><span>Added <b>{money(savings.added)}</b></span><span>From income <b>{money(savings.fromIncome)}</b></span><span>Taken out <b>{money(savings.takenOut)}</b></span></div>
+        <div className="balance-breakdown"><span>Added <b>{money(savings.added)}</b></span><span>From entries <b>{money(savings.fromIncome)}</b></span><span>Taken out <b>{money(savings.takenOut)}</b></span></div>
       </section>
       <section className="card contribution-card">
         <PanelHeading title="How it adds up" subtitle="Your savings are separate from Joint Savings."/>
         <ul className="savings-explainer">
           <li><b>Add money</b> or <b>Take out</b> here at any time.</li>
-          <li>When you add income, tick <b>My savings</b> in the split and its share is added here.</li>
-          <li>Deposits toward the Wedding stay in Joint Savings.</li>
+          <li>Income shares and entries in categories inside your <b>Personal saving</b> folder are added here.</li>
+          <li>Categories in your <b>Joint saving</b> folder go to Joint Savings instead.</li>
         </ul>
       </section>
     </div>
@@ -46,8 +47,8 @@ export function MySavings({ state, me, open, editEntry }) {
             <span className={`icon-tile ${tone}`}><Icon size={16}/></span>
             <div><strong>{row.note || label}</strong><small>{[row.note ? label : '', shortDate(row.date), displayTime(row.time)].filter(Boolean).join(' · ')}</small></div>
             <b className={row.amount < 0 ? 'negative' : 'positive'}>{row.amount < 0 ? '−' : '+'}{money(Math.abs(row.amount))}</b>
-            <div className="row-actions">{row.kind === 'income'
-              ? <button className="icon-btn" aria-label={`Edit the ${row.note} income entry`} title="Edit the income entry" onClick={() => editEntry(row.entry)}><Pencil size={15}/></button>
+            <div className="row-actions">{row.kind === 'income' || row.kind === 'budget'
+              ? <button className="icon-btn" aria-label={`Edit the ${row.note} entry`} title="Edit the entry" onClick={() => editEntry(row.entry)}><Pencil size={15}/></button>
               : <>
                 <button className="icon-btn" aria-label={`Edit ${label.toLowerCase()} of ${money(Math.abs(row.amount))}`} onClick={() => open({ kind: 'saving', item: row })}><Pencil size={15}/></button>
                 <button className="icon-btn danger" aria-label={`Delete ${label.toLowerCase()} of ${money(Math.abs(row.amount))}`} onClick={() => open({ kind: 'delete-saving', item: row })}><Trash2 size={15}/></button>

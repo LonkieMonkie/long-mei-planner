@@ -1,6 +1,16 @@
 // What changed in each release, newest first. Add an entry and bump "version" in
 // package.json together; a test checks that they match.
 export const CHANGELOG = [
+  { version: '2.14.0', date: '2026-11-18', changes: [
+    'Folders on the Budget page. Each of you has three built-in folders that can’t be renamed or deleted: Joint saving, Personal saving and Personal checking. You can add your own folders too, with a name and color.',
+    'The folder sets where a category’s money goes. In Joint saving, its income shares and expenses go to Joint Savings. In Personal saving, they go to My Savings. Personal checking is everyday money and gets the unticked rest of each income. Your own folders only group and total.',
+    'Drag a category by its handle to reorder it or move it into a folder. This works with a mouse or a finger, scrolls when you reach the edge, and you can also use the arrow keys or pick a folder in the category’s settings.',
+    'Folders collapse, and each shows the total budget, spent or saved, and remaining of the categories inside. Your folders and order are private to you.',
+    'Wedding, My savings and Personal are now ordinary categories: rename, move or delete them. Past entries keep where their money went.',
+    'Add an entry groups categories by folder. Folders have no percentage of their own; they add up their ticked categories.',
+    'Income and money in are green, and spending is red, across the cards, charts, calendar and history. Money moved into savings no longer counts as spending in your budget totals.',
+    'Insights: the Month/Year, period and Together/Long/Mei controls sit on one row, on phones too.',
+  ] },
   { version: '2.13.0', date: '2026-11-18', changes: [
     'Private budgets: each of you has your own categories and budgets. Your partner sees what you spend in each category, but never your budgets or what’s left.',
     'Each of you started with your own copy of the old shared categories and limits. Wedding, My savings and Personal stay shared, with a separate budget for each of you.',

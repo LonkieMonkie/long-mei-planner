@@ -75,6 +75,92 @@ export const isPersonalName = name => name.trim().toLowerCase() === 'personal';
 export const isSavingsName = name => ['my savings', 'savings'].includes(name.trim().toLowerCase());
 export const isPermanentCategory = id => [WEDDING_CATEGORY_ID, PERSONAL_CATEGORY_ID, SAVINGS_CATEGORY_ID].includes(id);
 
+// Folders organize each person's categories. Three are built in and can't be renamed or deleted,
+// and they decide where a category's money goes:
+//   joint    – income shares and expenses are deposits to Joint Savings (the category's goal)
+//   saving   – income shares and expenses go to that person's own savings (My Savings)
+//   checking – everyday money; the unticked rest of a split income lands here
+// Custom folders only group. Where money went is recorded on each entry when it's saved
+// (`to` on splits and expenses), so moving a category later doesn't rewrite the past.
+export const FOLDER_KINDS = {
+  joint: { name: 'Joint saving', color: '#4c8363' },
+  saving: { name: 'Personal saving', color: '#5a9ccc' },
+  checking: { name: 'Personal checking', color: '#d9a520' },
+};
+export const REST = 'rest'; // Split id for the unticked rest of an income, which goes to checking.
+export const systemFolderId = (kind, personId) => `${kind}-${personId}`;
+export const visibleFolders = (state, personId) => (state.folders ?? [])
+  .filter(folder => !personId || folder.ownerId === personId)
+  .sort((a, b) => Number(b.locked ?? false) - Number(a.locked ?? false) || (a.order ?? 0) - (b.order ?? 0));
+export function categoryKind(state, category) {
+  if (!category) return null;
+  const folder = category.folderId && (state.folders ?? []).find(item => item.id === category.folderId);
+  return folder?.kind ?? null;
+}
+const sortCategories = list => [...list].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+// One person's categories as the Budget page and entry form show them: each folder with its
+// categories in order, then the categories that aren't in a folder.
+export function budgetGroups(state, personId) {
+  const categories = visibleCategories(state, personId);
+  const folders = visibleFolders(state, personId);
+  const known = new Set(folders.map(folder => folder.id));
+  return [
+    ...folders.map(folder => ({ folder, categories: categories.filter(category => category.folderId === folder.id) })),
+    { folder: null, categories: categories.filter(category => !known.has(category.folderId)) },
+  ];
+}
+
+// The category a quick Joint Savings deposit is logged in: the person's first Joint saving
+// category for that goal, or else their first Joint saving category.
+export function jointDepositCategory(state, personId, goalId = WEDDING_GOAL_ID) {
+  const joint = visibleCategories(state, personId).filter(category => categoryKind(state, category) === 'joint');
+  return joint.find(category => jointGoalFor(category, state.goals) === goalId) ?? joint[0] ?? null;
+}
+
+// Moves a category to a folder (or out of folders, with null) at a position among that
+// group's categories, renumbering the person's categories so the order is saved as shown.
+export function moveCategory(state, categoryId, folderId, index) {
+  const moving = state.categories.find(category => category.id === categoryId);
+  if (!moving) return state;
+  const personId = moving.ownerId;
+  if (folderId && !(state.folders ?? []).some(folder => folder.id === folderId && folder.ownerId === personId)) throw new Error('That folder belongs to the other profile.');
+  const groups = budgetGroups(state, personId).map(group => ({ id: group.folder?.id ?? null, ids: group.categories.map(category => category.id).filter(id => id !== categoryId) }));
+  const target = groups.find(group => group.id === (folderId ?? null)) ?? groups[groups.length - 1];
+  target.ids.splice(Math.max(0, Math.min(index, target.ids.length)), 0, categoryId);
+  const placement = new Map();
+  let order = 0;
+  for (const group of groups) for (const id of group.ids) placement.set(id, { folderId: group.id, order: order++ });
+  return { ...state, categories: state.categories.map(category => {
+    const place = placement.get(category.id);
+    if (!place) return category;
+    const next = { ...category, order: place.order };
+    if (place.folderId) next.folderId = place.folderId; else delete next.folderId;
+    return next;
+  }) };
+}
+
+export function folderFromFields(fields, state, personId, previous) {
+  const name = String(fields.name ?? '').trim().replace(/\s+/g, ' ');
+  if (!name) throw new Error('Enter a folder name.');
+  if (name.length > 40) throw new Error('Keep the folder name to 40 characters or fewer.');
+  if (previous?.locked) throw new Error('Built-in folders can’t be renamed.');
+  if ((state.folders ?? []).some(folder => folder.ownerId === personId && folder.id !== previous?.id && folder.name.toLowerCase() === name.toLowerCase())) throw new Error('You already have a folder with that name.');
+  const color = parseAccent(fields.color) ?? previous?.color ?? '#8a94a3';
+  if (previous) return { ...previous, name, color };
+  const order = Math.max(2, ...(state.folders ?? []).filter(folder => folder.ownerId === personId).map(folder => folder.order ?? 0)) + 1;
+  return { id: 'folder-' + crypto.randomUUID().slice(0, 8), ownerId: personId, name, color, locked: false, order };
+}
+
+// Deleting a custom folder keeps its categories; they move out to the ungrouped list.
+export function deleteFolder(state, folderId) {
+  const folder = (state.folders ?? []).find(item => item.id === folderId);
+  if (!folder) return state;
+  if (folder.locked) throw new Error('Built-in folders can’t be deleted.');
+  return { ...state, folders: state.folders.filter(item => item.id !== folderId),
+    categories: state.categories.map(category => { if (category.folderId !== folderId) return category; const next = { ...category }; delete next.folderId; return next; }) };
+}
+
 // Budget categories are private: a custom category belongs to one person (ownerId) and only
 // that person sees it, its limit and its settings. The permanent categories (Wedding, My savings,
 // Personal) are shared, but each person keeps their own limit for them in `limits`.
@@ -82,9 +168,9 @@ export const isPermanentCategory = id => [WEDDING_CATEGORY_ID, PERSONAL_CATEGORY
 export const limitFor = (category, personId) => category.ownerId ? category.limit ?? 0
   : personId ? category.limits?.[personId] ?? category.limit ?? 0
   : Object.values(category.limits ?? {}).reduce((sum, value) => sum + value, 0) || (category.limit ?? 0);
-export const visibleCategories = (state, personId) => personId
+export const visibleCategories = (state, personId) => sortCategories(personId
   ? state.categories.filter(category => !category.ownerId || category.ownerId === personId)
-  : state.categories;
+  : state.categories);
 export const canUseCategory = (category, personId) => !category.ownerId || category.ownerId === personId;
 
 // One person's budget for a month: their categories, what they spent in each, and their limits.
@@ -97,6 +183,7 @@ function privatizeCategories(state) {
   const copyId = (id, personId) => personId === ids[0] ? id : `${id}-${personId}`;
   const remap = new Map();
   state.categories = state.categories.flatMap(category => {
+    if (ids.includes(category.ownerId)) return [category];
     if (isPermanentCategory(category.id)) {
       if (!category.limits) category.limits = Object.fromEntries(ids.map(id => [id, category.limit ?? 0]));
       delete category.limit;
@@ -130,12 +217,16 @@ export function personalBudget(state, month, personId) {
     if (!entry.date.startsWith(month + '-') || (personId && entry.personId !== personId)) continue;
     if (entry.type === 'expense') {
       spentByCategory.set(entry.categoryId, (spentByCategory.get(entry.categoryId) ?? 0) + entry.amount);
-      if (categories.some(category => category.id === entry.categoryId)) spent += entry.amount;
+      // Money logged in a saving category, or deposited to a joint goal, is saved rather than spent.
+      const saved = entry.to === 'saving' ? entry.amount : goalShares(entry).reduce((sum, share) => sum + share.amount, 0);
+      if (categories.some(category => category.id === entry.categoryId)) spent += Math.max(0, entry.amount - saved);
     }
     for (const split of entry.splits ?? []) fundedByCategory.set(split.categoryId, (fundedByCategory.get(split.categoryId) ?? 0) + split.amount);
   }
   const limit = category => limitFor(category, personId);
-  return { categories, spentByCategory, fundedByCategory, spent, budgeted: categories.reduce((sum, category) => sum + limit(category), 0), limit };
+  const kindOf = category => categoryKind(state, category);
+  const spending = categories.filter(category => !['joint', 'saving'].includes(kindOf(category)));
+  return { categories, kindOf, folders: visibleFolders(state, personId), spentByCategory, fundedByCategory, spent, budgeted: spending.reduce((sum, category) => sum + limit(category), 0), limit };
 }
 export function reservedNameError(name) {
   if (isWeddingName(name)) return 'Wedding is already a permanent category.';
@@ -162,11 +253,26 @@ export function freshData() {
   };
 }
 
-export function savingsRule(category, personId, goals, previous) {
+// A new planner in today's shape: private categories for each person, sorted into folders.
+// (freshData is the older shared seed; readState turns it into this.)
+export function newPlanner() {
+  const state = freshData();
+  privatizeCategories(state);
+  organizeFolders(state);
+  return finishState(state);
+}
+
+export const jointGoalFor = (category, goals) => [category?.savingsGoalId, WEDDING_GOAL_ID, goals[0]?.id].find(id => id && goals.some(goal => goal.id === id)) ?? '';
+
+// How much of an expense goes to a joint goal. In the Joint saving folder it's all of it; in the
+// Personal saving folder none (it goes to My Savings instead); elsewhere the category's rate.
+export function savingsRule(category, personId, goals, previous, kind = null) {
   if (!category) return { rate: 0, goalId: '' };
   if (previous?.type === 'expense' && previous.categoryId === category.id && previous.personId === personId) {
     return { rate: previous.rate ?? 0, goalId: previous.goalId ?? '' };
   }
+  if (kind === 'joint') { const goalId = jointGoalFor(category, goals); return goalId ? { rate: 10_000, goalId } : { rate: 0, goalId: '' }; }
+  if (kind === 'saving') return { rate: 0, goalId: '' };
   const rate = category.savingsRates?.[personId] ?? 0;
   const goalId = category.id === WEDDING_CATEGORY_ID ? WEDDING_GOAL_ID : category.savingsGoalId || goals[0]?.id;
   return rate > 0 && goals.some(goal => goal.id === goalId) ? { rate, goalId } : { rate: 0, goalId: '' };
@@ -181,18 +287,20 @@ export function incomeSplits(raw, amount, state, personId) {
   const splits = [];
   for (const { categoryId, rate } of chosen) {
     const category = state.categories.find(item => item.id === categoryId);
-    if (!category || categoryId === PERSONAL_CATEGORY_ID || seen.has(categoryId) || (personId && !canUseCategory(category, personId))) continue;
+    if (!category || categoryId === REST || seen.has(categoryId) || (personId && !canUseCategory(category, personId))) continue;
     if (!Number.isInteger(rate) || rate < 0 || rate > 10_000) throw new Error(`Enter a share from 0% to 100% for ${category.name}.`);
     seen.add(categoryId);
     if (!rate) continue;
     const split = { categoryId, rate, amount: Math.floor(amount * rate / 10_000) };
-    if (categoryId === WEDDING_CATEGORY_ID && state.goals.some(goal => goal.id === WEDDING_GOAL_ID)) split.goalId = WEDDING_GOAL_ID;
+    const kind = categoryKind(state, category);
+    if (kind) split.to = kind;
+    if (kind === 'joint' && jointGoalFor(category, state.goals)) split.goalId = jointGoalFor(category, state.goals);
     splits.push(split);
   }
   // Ticked shares can't pass 100%; whatever they leave goes to Personal.
   const total = splits.reduce((sum, split) => sum + split.rate, 0);
   if (total > 10_000) throw new Error(`The ticked shares add up to ${total / 100}%. Lower them to 100% or less.`);
-  if (total < 10_000) splits.push({ categoryId: PERSONAL_CATEGORY_ID, rate: 10_000 - total, amount: Math.floor(amount * (10_000 - total) / 10_000) });
+  if (total < 10_000) splits.push({ categoryId: REST, to: 'checking', rate: 10_000 - total, amount: Math.floor(amount * (10_000 - total) / 10_000) });
   // Hand out the leftover cents from rounding down, largest fraction first, so the shares sum to the amount.
   let left = amount - splits.reduce((sum, split) => sum + split.amount, 0);
   const byFraction = [...splits].sort((a, b) => (amount * b.rate % 10_000) - (amount * a.rate % 10_000));
@@ -214,7 +322,10 @@ export function entryFromFields(fields, state, previous, now = new Date().toISOS
   if (!isDateKey(fields.date)) throw new Error('Choose a valid transaction date.');
   const time = fields.time || (previous ? entryTime(previous) : localTime(new Date(now)));
   if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time)) throw new Error('Choose a valid transaction time.');
-  const allocation = type === 'expense' ? savingsRule(category, person.id, state.goals, previous) : {};
+  const kind = type === 'expense' ? categoryKind(state, category) : null;
+  const sameCategory = previous?.type === 'expense' && previous.categoryId === category?.id && previous.personId === person.id;
+  const to = sameCategory ? previous.to : kind === 'saving' ? 'saving' : undefined;
+  const allocation = type === 'expense' ? savingsRule(category, person.id, state.goals, previous, kind) : {};
   const splits = type === 'income' ? incomeSplits(fields.splits, amount, state, person.id) : [];
   // A shared expense records the other person's share; withSharedDebt turns it into a debt.
   let shared = null;
@@ -226,7 +337,7 @@ export function entryFromFields(fields, state, previous, now = new Date().toISOS
   return {
     id: previous?.id ?? crypto.randomUUID(),
     personId: person.id, type, categoryId: type === 'expense' ? category.id : '',
-    source, date: fields.date, time, amount, ...allocation, ...(splits.length ? { splits } : {}), ...(shared ? { shared } : {}),
+    source, date: fields.date, time, amount, ...allocation, ...(to ? { to } : {}), ...(splits.length ? { splits } : {}), ...(shared ? { shared } : {}),
     createdAt: previous?.createdAt ?? now, editedAt: previous ? now : null,
   };
 }
@@ -250,7 +361,7 @@ export function summarize(state, month) {
     if (month && !entry.date.startsWith(month + '-')) continue;
     for (const split of entry.splits ?? []) {
       fundedByCategory.set(split.categoryId, (fundedByCategory.get(split.categoryId) ?? 0) + split.amount);
-      if (split.categoryId === PERSONAL_CATEGORY_ID) people[entry.personId].personal += split.amount;
+      if (split.to === 'checking') people[entry.personId].personal += split.amount;
     }
     const person = people[entry.personId];
     if (entry.type === 'income') {
@@ -285,7 +396,7 @@ export function calendarItems(state, dates) {
     const deposited = entryContribution(entry);
     const goalNames = goalShares(entry).map(share => state.goals.find(goal => goal.id === share.goalId)?.name).filter(Boolean).join(', ');
     const time = entryTime(entry);
-    const weddingDeposit = entry.categoryId === WEDDING_CATEGORY_ID && deposited > 0;
+    const weddingDeposit = /wedding/i.test(entry.source) && deposited > 0;
     if (!weddingDeposit) {
       items.push({ id: 'entry:' + entry.id, kind: entry.type, title: category?.name ?? entry.source,
         color: category && categoryColor(category), entry, time });
@@ -385,7 +496,7 @@ export function shiftMonth(month, step) {
 
 export function readState(storage) {
   const raw = storage.getItem(STORAGE_KEY);
-  if (!raw) return freshData();
+  if (!raw) return newPlanner();
   const state = JSON.parse(raw);
   if (state?.version !== 2 || !['categories', 'goals', 'entries', 'events'].every(key => Array.isArray(state[key]))
       || !Number.isSafeInteger(state.savingsAdjustment)
@@ -396,6 +507,20 @@ export function readState(storage) {
   state.debts ??= [];
   if (state.savings !== undefined && !Array.isArray(state.savings)) throw new Error('The saved dashboard could not be read.');
   state.savings = (state.savings ?? []).filter(isSavingsRecord);
+  // Planners from before folders get the old permanent categories first, so they can be
+  // turned into ordinary categories below. After that, deleting one is allowed and sticks.
+  if (!Array.isArray(state.folders)) ensureLegacyCategories(state);
+  if (!state.goals.some(goal => goal.id === WEDDING_GOAL_ID)) state.goals.unshift({ ...weddingGoal });
+  state.events = state.events.map(normalizeEvent);
+  state.eventCategories = normalizeEventCategories(state.eventCategories);
+  for (const goal of state.goals) if (goal.targetDate !== undefined && !isDateKey(goal.targetDate)) delete goal.targetDate;
+  delete state.firstPaydays;
+  privatizeCategories(state);
+  organizeFolders(state);
+  return finishState(state);
+}
+
+function ensureLegacyCategories(state) {
   const category = state.categories.find(item => item.id === WEDDING_CATEGORY_ID)
     ?? state.categories.find(item => isWeddingName(item.name));
   const wedding = {
@@ -406,7 +531,6 @@ export function readState(storage) {
   if (category && category.id !== WEDDING_CATEGORY_ID) {
     state.entries = state.entries.map(entry => entry.categoryId === category.id ? { ...entry, categoryId: WEDDING_CATEGORY_ID } : entry);
   }
-  if (!state.goals.some(goal => goal.id === WEDDING_GOAL_ID)) state.goals.unshift({ ...weddingGoal });
   // My savings and Personal are permanent too. A category the couple already gave one of
   // those names becomes it, keeping its entries. A missing one is added before Personal.
   for (const [fixed, matches] of [[savingsCategory, isSavingsName], [personalCategory, isPersonalName]]) {
@@ -421,12 +545,64 @@ export function readState(storage) {
         ...(entry.splits ? { splits: entry.splits.map(split => split.categoryId === oldId ? { ...split, categoryId: fixed.id } : split) } : {}) }));
     } else named.name = fixed.name;
   }
-  // Automatic biweekly paydays were removed; repeating events replace them.
-  delete state.firstPaydays;
-  state.events = state.events.map(normalizeEvent);
-  state.eventCategories = normalizeEventCategories(state.eventCategories);
-  for (const goal of state.goals) if (goal.targetDate !== undefined && !isDateKey(goal.targetDate)) delete goal.targetDate;
-  privatizeCategories(state);
+}
+
+// Gives each person the three built-in folders and turns the old shared Wedding, My savings and
+// Personal categories into one private copy each, placed in the folder that now gives them
+// their behavior. Older splits and expenses get the destination they had at the time. The
+// result is the same on every device and running it again changes nothing.
+function organizeFolders(state) {
+  const ids = PEOPLE.map(person => person.id);
+  state.folders = (Array.isArray(state.folders) ? state.folders : []).filter(folder =>
+    typeof folder?.id === 'string' && ids.includes(folder.ownerId) && typeof folder.name === 'string' && folder.name.trim());
+  for (const personId of ids) {
+    Object.entries(FOLDER_KINDS).forEach(([kind, { name, color }], index) => {
+      const id = systemFolderId(kind, personId);
+      const existing = state.folders.find(folder => folder.id === id);
+      const fixed = { id, ownerId: personId, kind, name, locked: true };
+      if (existing) Object.assign(existing, fixed);
+      else state.folders.push({ ...fixed, color, order: index });
+    });
+  }
+  for (const folder of state.folders) if (!folder.locked) { delete folder.kind; folder.color = parseAccent(folder.color) ?? '#8a94a3'; }
+
+  const homes = { [WEDDING_CATEGORY_ID]: 'joint', [SAVINGS_CATEGORY_ID]: 'saving', [PERSONAL_CATEGORY_ID]: 'checking' };
+  const remap = new Map();
+  state.categories = state.categories.flatMap(category => {
+    const home = homes[category.id];
+    if (!home || category.ownerId) return [category];
+    return ids.map((personId, index) => {
+      const id = index === 0 ? category.id : `${category.id}-${personId}`;
+      remap.set(category.id + '|' + personId, id);
+      const copy = { ...category, id, ownerId: personId, limit: category.limits?.[personId] ?? category.limit ?? 0, folderId: systemFolderId(home, personId) };
+      delete copy.limits;
+      for (const key of ['savingsRates', 'incomeShares']) {
+        if (category[key]?.[personId]) copy[key] = { [personId]: category[key][personId] }; else delete copy[key];
+      }
+      return copy;
+    });
+  });
+  const legacyTo = split => split.goalId ? 'joint' : split.categoryId === SAVINGS_CATEGORY_ID ? 'saving' : split.categoryId === PERSONAL_CATEGORY_ID ? 'checking' : null;
+  state.entries = state.entries.map(entry => {
+    const next = { ...entry };
+    if (entry.splits) next.splits = entry.splits.map(split => {
+      const to = split.to ?? legacyTo(split);
+      return { ...split, ...(to ? { to } : {}), categoryId: remap.get(split.categoryId + '|' + entry.personId) ?? split.categoryId };
+    });
+    if (entry.type === 'expense' && !entry.to && entry.categoryId === SAVINGS_CATEGORY_ID && remap.size) next.to = 'saving';
+    const moved = remap.get(entry.categoryId + '|' + entry.personId);
+    if (moved) next.categoryId = moved;
+    return next;
+  });
+  const folders = new Map(state.folders.map(folder => [folder.id, folder]));
+  state.categories.forEach((category, index) => {
+    const folder = folders.get(category.folderId);
+    if (category.folderId !== undefined && (!folder || folder.ownerId !== category.ownerId)) delete category.folderId;
+    if (!Number.isFinite(category.order)) category.order = index;
+  });
+}
+
+function finishState(state) {
   for (const category of state.categories) {
     const shares = Object.fromEntries(PEOPLE.map(({ id }) => [id, category.incomeShares?.[id]]).filter(([, rate]) => Number.isInteger(rate) && rate > 0 && rate <= 10_000));
     if (Object.keys(shares).length) category.incomeShares = shares; else delete category.incomeShares;

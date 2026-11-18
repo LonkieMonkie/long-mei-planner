@@ -11,7 +11,7 @@ import { Dialogs } from './dialogs.jsx';
 import { ExportCard, Settings, StorageCard, TreeSettings, VersionCard } from './settings.jsx';
 import { accentStyles } from './appearance.js';
 import { PlantPair } from './plants.jsx';
-import { PEOPLE, STORAGE_KEY, categoryColor, entryContribution, entryTime, goalShares, freshData, limitFor, visibleCategories, localDate, readState, summarize } from './model.js';
+import { PEOPLE, STORAGE_KEY, categoryColor, entryContribution, entryTime, goalShares, newPlanner, limitFor, visibleCategories, localDate, readState, summarize } from './model.js';
 import { workbook } from './excel.js';
 import { repeatSummary } from './events.js';
 import { AccountCard, AccountGate, ProfilePictureCard } from './account.jsx';
@@ -42,7 +42,7 @@ function loadDashboard() {
   try {
     return { state: readState(localStorage), error: '' };
   } catch (error) {
-    return { state: freshData(), error: error.message };
+    return { state: newPlanner(), error: error.message };
   }
 }
 
@@ -68,7 +68,7 @@ function exportExcel(state, totals, me) {
     { name: 'Personal savings', rows: [
       ['Profile', 'Date', 'Time', 'Type', 'Note', 'Amount (USD)'],
       ...PEOPLE.flatMap(person => personalSavings(state, person.id).rows.map(row => [person.name, row.date, row.time,
-        row.kind === 'income' ? 'Saved from income' : row.amount < 0 ? 'Taken out' : 'Added', row.note, row.amount / 100])),
+        row.kind === 'income' ? 'Saved from income' : row.kind === 'budget' ? 'Logged in Personal saving' : row.amount < 0 ? 'Taken out' : 'Added', row.note, row.amount / 100])),
     ] },
     { name: 'Events', rows: [
       ['Title', 'Category', 'Date', 'Time', 'Repeats', 'Description'], ...state.events.map(event => [event.title, state.eventCategories.find(category => category.id === event.categoryId)?.name ?? '', event.date, event.time, repeatSummary(event), event.description]),
@@ -144,7 +144,7 @@ function App() {
           if (!data) {
             // Very first sign-in: this browser's planner becomes the shared one.
             let local;
-            try { local = readState(localStorage); } catch { local = freshData(); }
+            try { local = readState(localStorage); } catch { local = newPlanner(); }
             api.transact(current => current ? null : { json: JSON.stringify(local), rev: 1, profiles: {}, updatedAt: new Date().toISOString(), updatedBy: user.uid }).catch(fail);
             return;
           }

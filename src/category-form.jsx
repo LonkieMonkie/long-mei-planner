@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { DEFAULT_ACCENT, parseAccent } from './appearance.js';
-import { PEOPLE, PERSONAL_CATEGORY_ID, WEDDING_CATEGORY_ID, categoryColor, decimalUnits, reservedNameError } from './model.js';
+import { PEOPLE, categoryColor, decimalUnits, moveCategory, visibleFolders } from './model.js';
 import { ActionForm } from './ui.jsx';
 
 function toHsv(hex) {
@@ -76,40 +76,50 @@ function CategoryColorPicker({ initial }) {
   </fieldset>;
 }
 
-export function CategoryForm({ item, state, done, close, me }) {
-  const wedding = item?.id === WEDDING_CATEGORY_ID;
+export function CategoryForm({ item, state, done, close, me, folderId: startFolder }) {
   // Signed in, you only see and change your own rates; the other person's are kept as they are.
   const people = me ? PEOPLE.filter(person => person.id === me) : PEOPLE;
+  const owner = item?.ownerId ?? me;
+  const folders = owner ? visibleFolders(state, owner) : [];
+  const [folderId, setFolderId] = useState(item ? item.folderId ?? '' : startFolder ?? '');
+  const kind = folders.find(folder => folder.id === folderId)?.kind ?? null;
   return <ActionForm cancel={close} label={item ? 'Save category' : 'Add category'} onSave={fields => {
     const color = parseAccent(fields.color);
     if (!color) throw new Error('Enter a six-digit hex color.');
-    const name = fields.name?.trim();
-    if (!item && !name) throw new Error('Enter a category name.');
-    if (!item && reservedNameError(name)) throw new Error(reservedNameError(name));
+    const name = fields.name?.trim().replace(/\s+/g, ' ');
+    if (!name) throw new Error('Enter a category name.');
     const savingsRates = { ...item?.savingsRates, ...Object.fromEntries(people.map(({ id }) => [id, decimalUnits(fields[id] || '0', 10_000)])) };
-    const personal = item?.id === PERSONAL_CATEGORY_ID;
-    const incomeShares = personal ? undefined : { ...item?.incomeShares, ...Object.fromEntries(people.map(({ id }) => [id, decimalUnits(fields['share-' + id] || '0', 10_000)])) };
-    const update = { color, savingsRates, incomeShares, savingsGoalId: wedding ? item.savingsGoalId : fields.savingsGoalId };
-    done(current => ({
-      ...current,
-      categories: item
+    const incomeShares = { ...item?.incomeShares, ...Object.fromEntries(people.map(({ id }) => [id, decimalUnits(fields['share-' + id] || '0', 10_000)])) };
+    const update = { name, color, savingsRates, incomeShares, savingsGoalId: fields.savingsGoalId ?? item?.savingsGoalId };
+    done(current => {
+      const id = item?.id ?? crypto.randomUUID();
+      let next = { ...current, categories: item
         ? current.categories.map(category => category.id === item.id ? { ...category, ...update } : category)
-        : [...current.categories, { id: crypto.randomUUID(), name, limit: 0, icon: 'tag', tone: 'indigo', ...update, ...(me ? { ownerId: me } : {}) }],
-    }), item ? 'Category settings saved' : 'Category added');
+        : [...current.categories, { id, limit: 0, icon: 'tag', tone: 'indigo', ...update, ...(me ? { ownerId: me } : {}), order: Math.max(0, ...current.categories.map(c => c.order ?? 0)) + 1 }] };
+      // Placing it in a folder goes through the same move as dragging, at the end of that folder.
+      if (owner && (folderId || '') !== (item?.folderId ?? '')) next = moveCategory(next, id, folderId || null, Infinity);
+      return next;
+    }, item ? 'Category settings saved' : 'Category added');
   }}>
-    {!item && <label>Category name<input name="name" autoFocus required maxLength={70} placeholder="e.g. Traveling"/></label>}
+    <label>Category name<input name="name" autoFocus={!item} required maxLength={70} defaultValue={item?.name ?? ''} placeholder="e.g. Traveling"/></label>
+    {owner && <label>Folder<select value={folderId} onChange={e => setFolderId(e.target.value)}>
+      <option value="">Not in a folder</option>
+      {folders.map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}
+    </select></label>}
+    {kind === 'joint' ? <p className="field-help">In <b>Joint saving</b>, its income shares and expenses all go to the joint goal below.</p>
+      : kind === 'saving' ? <p className="field-help">In <b>Personal saving</b>, its income shares and expenses go to {owner === me ? 'your' : 'their'} own savings on My Savings.</p>
+      : kind === 'checking' ? <p className="field-help">In <b>Personal checking</b>, this is everyday money.</p> : null}
     {!item && me && <p className="field-help">This category is private to you. Your partner sees what you spend in it, but not your budget for it.</p>}
     <CategoryColorPicker initial={item ? categoryColor(item) : DEFAULT_ACCENT}/>
-    <div className="form-row">{people.map(person => <label key={person.id}>{me ? 'Your' : person.name} savings (%)
+    {kind !== 'joint' && kind !== 'saving' ? <div className="form-row">{people.map(person => <label key={person.id}>{me ? 'Your' : person.name} savings (%)
       <input type="number" name={person.id} min="0" max="100" step="0.01" defaultValue={(item?.savingsRates?.[person.id] ?? 0) / 100}/>
-    </label>)}</div>
-    {item?.id === PERSONAL_CATEGORY_ID ? <p className="field-help">Personal is permanent. It receives whatever share of each income isn’t ticked for other budgets.</p>
-      : <div className="form-row">{people.map(person => <label key={person.id}>{me ? 'Your' : person.name} share of income (%)
+    </label>)}</div> : people.map(person => <input type="hidden" key={person.id} name={person.id} value={(item?.savingsRates?.[person.id] ?? 0) / 100}/>)}
+    <div className="form-row">{people.map(person => <label key={person.id}>{me ? 'Your' : person.name} share of income (%)
       <input type="number" name={'share-' + person.id} min="0" max="100" step="0.01" defaultValue={(item?.incomeShares?.[person.id] ?? 0) / 100}/>
-    </label>)}</div>}
-    {wedding ? <p className="field-help">Wedding is permanent and adds to the Wedding goal in Joint Savings.</p> : <label>Joint savings goal<select name="savingsGoalId" defaultValue={item?.savingsGoalId || state.goals[0]?.id}>
+    </label>)}</div>
+    {kind !== 'saving' && <label>Joint savings goal<select name="savingsGoalId" defaultValue={item?.savingsGoalId || state.goals[0]?.id}>
       {state.goals.map(goal => <option key={goal.id} value={goal.id}>{goal.name}</option>)}
     </select></label>}
-    <p className="field-help">Savings rates apply to new expenses in this category. The share of income is suggested when that person adds income. Saved entries keep their recorded rates.</p>
+    <p className="field-help">{kind === 'joint' || kind === 'saving' ? 'The folder decides where new entries go. Saved entries keep where they went.' : 'Savings rates apply to new expenses in this category.'} The share of income is suggested when {me ? 'you add' : 'that person adds'} income.</p>
   </ActionForm>;
 }

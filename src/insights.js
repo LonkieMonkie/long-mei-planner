@@ -1,6 +1,6 @@
 // Calculations behind Insights, budget warnings, transaction filters and goal deadlines.
 // Everything here is pure: it reads the planner state and returns numbers.
-import { PEOPLE, PERSONAL_CATEGORY_ID, SAVINGS_CATEGORY_ID, categoryColor, dateFromKey, goalShares } from './model.js';
+import { PEOPLE, categoryColor, dateFromKey, goalShares } from './model.js';
 
 const DAY = 86_400_000;
 const pad = n => String(n).padStart(2, '0');
@@ -38,8 +38,9 @@ export function periodSummary(state, key, personId = null) {
     toGoals += saved;
     if (entry.type === 'income') {
       income += entry.amount;
-      toMySavings += entry.splits?.find(split => split.categoryId === SAVINGS_CATEGORY_ID)?.amount ?? 0;
+      toMySavings += entry.splits?.filter(split => split.to === 'saving').reduce((sum, split) => sum + split.amount, 0) ?? 0;
     } else {
+      if (entry.to === 'saving') toMySavings += entry.amount;
       const amount = spentPart(entry, saved);
       if (!amount) continue;
       spent += amount;
@@ -61,7 +62,7 @@ export function periodSummary(state, key, personId = null) {
 
 // The part of an expense that was really spent: money that went into a joint goal (a Wedding
 // deposit, or an expense's savings rate) counts as saved, not spent.
-const spentPart = (entry, saved = goalShares(entry).reduce((sum, share) => sum + share.amount, 0)) => Math.max(0, entry.amount - saved);
+const spentPart = (entry, saved = goalShares(entry).reduce((sum, share) => sum + share.amount, 0)) => entry.to === 'saving' ? 0 : Math.max(0, entry.amount - saved);
 
 // Income and spending for the `count` months ending with `endMonth`.
 export const monthlyTrend = (state, endMonth, count, personId = null) => trend(state, 'month', endMonth + '-01', count, personId).map(row => ({ ...row, month: row.key }));
@@ -114,7 +115,7 @@ export function budgetWarnings(budget, today) {
   const [y, m, d] = today.split('-').map(Number);
   const daysLeft = daysInMonth(y, m) - d + 1; // Today counts as a day to go.
   return budget.categories
-    .filter(category => budget.limit(category) > 0 && ![PERSONAL_CATEGORY_ID, SAVINGS_CATEGORY_ID].includes(category.id))
+    .filter(category => budget.limit(category) > 0 && !['joint', 'saving'].includes(budget.kindOf(category)))
     .map(category => {
       const spent = budget.spentByCategory.get(category.id) ?? 0, limit = budget.limit(category);
       return { category, spent, limit, left: limit - spent, ratio: spent / limit, daysLeft };

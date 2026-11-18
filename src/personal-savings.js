@@ -1,6 +1,6 @@
-// Each person's own savings: money they add or take out by hand, plus the share of their
-// split income ticked for the My savings budget category. Records live in state.savings; income shares are read from entries.
-import { SAVINGS_CATEGORY_ID, PEOPLE, decimalUnits, entryTime, isDateKey, localTime } from './model.js';
+// Each person's own savings: money they add or take out by hand, plus income shares and expenses
+// in categories of their Personal saving folder (recorded as `to: 'saving'` when saved). Records live in state.savings; income shares are read from entries.
+import { PEOPLE, decimalUnits, entryTime, isDateKey, localTime } from './model.js';
 
 const TIME = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
 
@@ -26,10 +26,11 @@ export function personalSavings(state, personId) {
   const rows = state.savings.filter(record => record.personId === personId).map(record => ({ ...record, kind: record.amount < 0 ? 'out' : 'in' }));
   for (const entry of state.entries) {
     if (entry.personId !== personId) continue;
-    const share = entry.splits?.find(split => split.categoryId === SAVINGS_CATEGORY_ID);
-    if (share?.amount) rows.push({ id: 'income:' + entry.id, kind: 'income', date: entry.date, time: entryTime(entry), amount: share.amount, note: entry.source, entry });
+    const share = entry.splits?.filter(split => split.to === 'saving').reduce((sum, split) => sum + split.amount, 0) ?? 0;
+    if (share) rows.push({ id: 'income:' + entry.id, kind: 'income', date: entry.date, time: entryTime(entry), amount: share, note: entry.source, entry });
+    if (entry.type === 'expense' && entry.to === 'saving') rows.push({ id: 'expense:' + entry.id, kind: 'budget', date: entry.date, time: entryTime(entry), amount: entry.amount, note: entry.source, entry });
   }
   rows.sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time));
   const sum = kind => rows.filter(row => row.kind === kind).reduce((total, row) => total + row.amount, 0);
-  return { rows, added: sum('in'), fromIncome: sum('income'), takenOut: -sum('out') || 0, balance: rows.reduce((total, row) => total + row.amount, 0) };
+  return { rows, added: sum('in'), fromIncome: sum('income') + sum('budget'), takenOut: -sum('out') || 0, balance: rows.reduce((total, row) => total + row.amount, 0) };
 }

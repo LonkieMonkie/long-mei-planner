@@ -5,9 +5,9 @@ import { repeatSummary } from './events.js';
 import { useState } from 'react';
 
 const styles = {
-  income: { tone: 'mint', label: 'Income', Icon: ArrowDownLeft },
-  expense: { tone: 'rose', label: 'Expense', Icon: ArrowUpRight },
-  deposit: { tone: 'mint', label: 'Deposit', Icon: PiggyBank },
+  income: { tone: 'income', label: 'Income', Icon: ArrowDownLeft },
+  expense: { tone: 'expense', label: 'Expense', Icon: ArrowUpRight },
+  deposit: { tone: 'income', label: 'Deposit', Icon: PiggyBank },
   saving: { tone: 'indigo', label: 'Personal savings', Icon: Wallet },
   payment: { tone: 'blue', label: 'Debt payment', Icon: ReceiptText },
   event: { tone: 'blue', label: 'Event', Icon: CalendarDays },

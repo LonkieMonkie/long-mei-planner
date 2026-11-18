@@ -1,18 +1,21 @@
 import { useState } from 'react';
-import { ArrowDownLeft, ArrowUpRight, Pencil, PiggyBank, Plus, Trash2 } from 'lucide-react';
-import { isDateKey, limitFor, visibleCategories, withSharedDebt, withoutEntry, PEOPLE, PERSONAL_CATEGORY_ID, SAVINGS_CATEGORY_ID, WEDDING_CATEGORY_ID, categoryColor, dateFromKey, contribution, debtFromFields, decimalUnits, entryContribution, entryFromFields, incomeSplits, entryTime, localDate, localTime, money, shortDate, savingsRule, setJointBalance, settleDebt } from './model.js';
+import { ArrowDownLeft, ArrowUpRight, Folder, Pencil, PiggyBank, Plus, Trash2 } from 'lucide-react';
+import { REST, budgetGroups, categoryKind, deleteFolder, folderFromFields, isDateKey, jointDepositCategory, limitFor, visibleCategories, withSharedDebt, withoutEntry, PEOPLE, categoryColor, dateFromKey, contribution, debtFromFields, decimalUnits, entryContribution, entryFromFields, incomeSplits, entryTime, localDate, localTime, money, shortDate, savingsRule, setJointBalance, settleDebt } from './model.js';
 import { ActionForm, ErrorBoundary, Modal } from './ui.jsx';
 import { CategoryForm } from './category-form.jsx';
 import { EVENT_COLORS, REPEATS, deleteEvent, deleteEventCategory, editEvent, eventCategoryFromFields, eventFromFields, occurrenceIndex } from './events.js';
 import { savingsFromFields } from './personal-savings.js';
 
-function EntryForm({ state, item, date, person, me, weddingDeposit = false, close, save }) {
-  const [type, setType] = useState(weddingDeposit ? 'expense' : item?.type ?? 'income');
+function EntryForm({ state, item, date, person, me, close, save }) {
+  const [type, setType] = useState(item?.type ?? 'income');
   const [amount, setAmount] = useState(item ? String(item.amount / 100) : '');
-  const [categoryId, setCategoryId] = useState(weddingDeposit ? WEDDING_CATEGORY_ID : item?.categoryId ?? '');
+  const [categoryId, setCategoryId] = useState(item?.categoryId ?? '');
   const [personId, setPersonId] = useState(item?.personId ?? person ?? me ?? 'long');
   const category = state.categories.find(item => item.id === categoryId);
-  const { rate, goalId } = savingsRule(category, personId, state.goals, item);
+  const kind = categoryKind(state, category);
+  const sameCategory = item?.type === 'expense' && item.categoryId === categoryId && item.personId === personId;
+  const goesTo = sameCategory ? (item.to ?? (item.rate === 10_000 ? 'joint' : null)) : kind;
+  const { rate, goalId } = savingsRule(category, personId, state.goals, item, kind);
   const [initialTime] = useState(() => item ? entryTime(item) : localTime());
   // Only the entry person's own categories (plus the shared permanent ones) are offered.
   const own = { ...state, categories: visibleCategories(state, personId) };
@@ -31,9 +34,9 @@ function EntryForm({ state, item, date, person, me, weddingDeposit = false, clos
     let rates = {};
     if (type === 'income') {
       rates = shareRates(own, shares);
-      fields = { ...fields, splits: JSON.stringify(own.categories.filter(c => shares[c.id]?.on && c.id !== PERSONAL_CATEGORY_ID).map(c => ({ categoryId: c.id, rate: rates[c.id] }))) };
+      fields = { ...fields, splits: JSON.stringify(own.categories.filter(c => shares[c.id]?.on).map(c => ({ categoryId: c.id, rate: rates[c.id] }))) };
     }
-    if (type === 'expense' && shared && !weddingDeposit) {
+    if (type === 'expense' && shared) {
       let rate;
       try { rate = decimalUnits(sharePct || '0', 10_000); } catch { throw new Error('Enter their share as a percentage from 1 to 100, with up to two decimals.'); }
       if (rate < 1) throw new Error('Enter their share as a percentage from 1 to 100.');
@@ -53,13 +56,12 @@ function EntryForm({ state, item, date, person, me, weddingDeposit = false, clos
     close();
   }
   const splitTotal = type === 'income' ? tickedTotal(own, shares) : 0;
-  return <ActionForm onSave={submit} cancel={close} disabled={!(splitTotal <= 10_000)} label={item ? 'Save changes' : weddingDeposit ? 'Save deposit' : 'Save entry'}>
-    {!weddingDeposit && <div className="segmented" aria-label="Entry type">
-      <button type="button" aria-pressed={type === 'income'} onClick={() => setType('income')}><ArrowDownLeft size={16}/> Income</button>
-      <button type="button" aria-pressed={type === 'expense'} onClick={() => setType('expense')}><ArrowUpRight size={16}/> Expense</button>
-    </div>}
+  return <ActionForm onSave={submit} cancel={close} disabled={!(splitTotal <= 10_000)} label={item ? 'Save changes' : 'Save entry'}>
+    <div className="segmented entry-type" aria-label="Entry type">
+      <button type="button" className="type-income" aria-pressed={type === 'income'} onClick={() => setType('income')}><ArrowDownLeft size={16}/> Income</button>
+      <button type="button" className="type-expense" aria-pressed={type === 'expense'} onClick={() => setType('expense')}><ArrowUpRight size={16}/> Expense</button>
+    </div>
     <input type="hidden" name="type" value={type}/>
-    {weddingDeposit && <p className="field-help">This will log a Wedding budget entry and add the amount shown below to Joint Savings.</p>}
     {me && !item && !person
       ? <input type="hidden" name="personId" value={me}/>
       : <label>Who is adding this?<select name="personId" value={personId} onChange={e => choosePerson(e.target.value)}>{PEOPLE.map(person => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label>}
@@ -67,16 +69,20 @@ function EntryForm({ state, item, date, person, me, weddingDeposit = false, clos
       <label>Transaction date<input name="date" type="date" defaultValue={item?.date ?? date ?? localDate()} required/></label>
       <label>Transaction time<input name="time" type="time" defaultValue={initialTime} required/></label>
     </div>
-    {weddingDeposit ? <input type="hidden" name="categoryId" value={WEDDING_CATEGORY_ID}/> : type === 'income'
+    {type === 'income'
       ? <label key="income">Income source (optional)<input name="source" defaultValue={item?.type === 'income' && item.source !== 'Income' ? item.source : ''} placeholder="e.g. Paycheck" maxLength={100}/></label>
-      : <label key="expense">Budget category<select name="categoryId" value={categoryId} onChange={e => setCategoryId(e.target.value)} required><option value="" disabled>Select category</option>{own.categories.map(category => <option value={category.id} key={category.id}>{category.name}</option>)}</select></label>}
+      : <label key="expense">Budget category<select name="categoryId" value={categoryId} onChange={e => setCategoryId(e.target.value)} required><option value="" disabled>Select category</option>
+        {budgetGroups(state, personId).filter(group => group.categories.length).map(({ folder, categories }) => <optgroup key={folder?.id ?? 'none'} label={folder?.name ?? 'Not in a folder'}>
+          {categories.map(category => <option value={category.id} key={category.id}>{category.name}</option>)}</optgroup>)}</select></label>}
     <label>Amount ($)<input name="amount" type="number" step="0.01" min="0.01" max="1000000000" placeholder="0.00" value={amount} onChange={e => setAmount(e.target.value)} required/></label>
     {type === 'expense' && category && <div className="contribution-preview"><PiggyBank size={19}/><span>
-      {PEOPLE.find(p => p.id === personId).name}’s category rate · {rate / 100}%{goalId && ' to ' + state.goals.find(g => g.id === goalId)?.name}
-    </span><strong>{money(projected)}</strong></div>}
-    {type === 'expense' && !weddingDeposit && <SharedExpense {...{ shared, setShared, sharePct, setSharePct, units, item, debts: state.debts }}
+      {goesTo === 'saving' ? <>In <b>Personal saving</b> · all of it goes to {PEOPLE.find(p => p.id === personId).name}’s savings</>
+        : goesTo === 'joint' ? <>In <b>Joint saving</b> · all of it goes to {state.goals.find(g => g.id === goalId)?.name ?? 'Joint Savings'}</>
+        : <>{PEOPLE.find(p => p.id === personId).name}’s category rate · {rate / 100}%{goalId && ' to ' + state.goals.find(g => g.id === goalId)?.name}</>}
+    </span><strong>{money(goesTo === 'saving' ? units : projected)}</strong></div>}
+    {type === 'expense' && <SharedExpense {...{ shared, setShared, sharePct, setSharePct, units, item, debts: state.debts }}
       payer={PEOPLE.find(p => p.id === personId)} other={PEOPLE.find(p => p.id !== personId)}/>}
-    {type === 'income' && <IncomeSplit state={own} shares={shares} setShares={setShares} units={units} person={PEOPLE.find(p => p.id === personId)}/>}
+    {type === 'income' && <IncomeSplit state={own} personId={personId} shares={shares} setShares={setShares} units={units} person={PEOPLE.find(p => p.id === personId)}/>}
     {type === 'income' && item?.type === 'income' && !item.splits && entryContribution(item) > 0 && <p className="field-help">Saving this as income will reverse its previous {money(entryContribution(item))} savings contribution.</p>}
   </ActionForm>;
 }
@@ -117,61 +123,100 @@ function initialShares(state, personId, item) {
 // The sum of the ticked percentages in basis points, or NaN while one is invalid.
 function tickedTotal(state, shares) {
   return state.categories.reduce((sum, category) => {
-    if (!shares[category.id]?.on || category.id === PERSONAL_CATEGORY_ID) return sum;
+    if (!shares[category.id]?.on) return sum;
     try { return sum + decimalUnits(shares[category.id].pct || '0', 10_000); } catch { return NaN; }
   }, 0);
 }
 
 function shareRates(state, shares) {
-  return Object.fromEntries(state.categories.filter(category => category.id !== PERSONAL_CATEGORY_ID).map(category => {
+  return Object.fromEntries(state.categories.map(category => {
     try { return [category.id, decimalUnits(shares[category.id]?.pct || '0', 10_000)]; }
     catch { throw new Error(`Enter a share from 0% to 100% for ${category.name}, with up to two decimals.`); }
   }));
 }
 
-const SPLIT_TAGS = { [WEDDING_CATEGORY_ID]: 'to Joint Savings', [SAVINGS_CATEGORY_ID]: 'to My Savings' };
+const FOLDER_NOTES = { joint: 'to Joint Savings', saving: 'to My Savings', checking: 'everyday money' };
 
-function IncomeSplit({ state, shares, setShares, units, person }) {
+// The income split, grouped by the person's folders. A folder has no percentage of its own:
+// its row shows what its ticked categories add up to. The unticked rest lands in Personal checking.
+function IncomeSplit({ state, personId, shares, setShares, units, person }) {
   const set = (id, change) => setShares(current => ({ ...current, [id]: { ...current[id], ...change } }));
   let total = 0, totalRate = 0;
-  const personal = state.categories.find(category => category.id === PERSONAL_CATEGORY_ID);
-  const rows = state.categories.filter(category => category !== personal).map(category => {
+  const rows = new Map(state.categories.map(category => {
     let rate = null;
     try { rate = decimalUnits(shares[category.id]?.pct || '0', 10_000); } catch { /* Shown as invalid; reported on save. */ }
     const on = shares[category.id]?.on;
     const amount = rate === null ? 0 : Math.floor(units * rate / 10_000);
     if (on && rate !== null) { total += amount; totalRate += rate; }
-    return { category, rate, on, amount };
-  });
+    return [category.id, { category, rate, on, amount }];
+  }));
+  const list = [...rows.values()];
   // A ticked share that isn't a number from 0 to 100 (with up to two decimals) blocks the split.
-  const invalid = rows.filter(row => row.on && row.rate === null);
+  const invalid = list.filter(row => row.on && row.rate === null);
   const valid = !invalid.length && totalRate <= 10_000;
   let rest = valid ? units - total : 0;
   if (valid) {
-    // Show the same cent-exact amounts that will be saved, Personal included.
-    const exact = new Map(incomeSplits(rows.filter(row => row.on).map(row => ({ categoryId: row.category.id, rate: row.rate })), units, state).map(split => [split.categoryId, split.amount]));
-    for (const row of rows) if (row.on) row.amount = exact.get(row.category.id) ?? 0;
-    rest = exact.get(PERSONAL_CATEGORY_ID) ?? 0;
+    // Show the same cent-exact amounts that will be saved, the rest included.
+    const exact = new Map(incomeSplits(list.filter(row => row.on).map(row => ({ categoryId: row.category.id, rate: row.rate })), units, state).map(split => [split.categoryId, split.amount]));
+    for (const row of list) if (row.on) row.amount = exact.get(row.category.id) ?? 0;
+    rest = exact.get(REST) ?? 0;
   }
+  const restRate = valid ? 10_000 - totalRate : null;
+  const groups = budgetGroups(state, personId);
+  const restRow = <div className="split-row on personal" key="rest">
+    <span className="split-check"><span className="split-lock" aria-hidden="true"/>The rest<small>not ticked</small></span>
+    <span className="split-pct"><span className="split-rest">{valid ? restRate / 100 : '—'}</span>%</span>
+    <strong className="split-amount">{valid ? money(rest) : '—'}</strong>
+  </div>;
+  const categoryRow = ({ category, rate, on, amount }) => <div className={on ? 'split-row on' : 'split-row'} key={category.id}>
+    <label className="split-check"><input type="checkbox" checked={Boolean(on)} onChange={e => set(category.id, { on: e.target.checked })}/>
+      <span className="color-dot" style={{ backgroundColor: categoryColor(category) }}/>{category.name}</label>
+    <label className="split-pct"><input type="number" min="0" max="100" step="0.01" inputMode="decimal" aria-label={`${category.name} share of income (%)`} aria-invalid={rate === null}
+      value={shares[category.id]?.pct ?? '0'} onChange={e => set(category.id, { pct: e.target.value, on: e.target.value !== '' && Number(e.target.value) > 0 ? true : on })}/>%</label>
+    <strong className="split-amount">{on ? money(amount) : '—'}</strong>
+  </div>;
   return <fieldset className="income-split">
     <legend>Split into budgets</legend>
-    <p className="field-help">Tick budgets to set their share aside for this month. Whatever isn’t ticked goes to Personal. Percentages are saved for {person.name}.</p>
-    <div className="split-rows">{rows.map(({ category, rate, on, amount }) => <div className={on ? 'split-row on' : 'split-row'} key={category.id}>
-      <label className="split-check"><input type="checkbox" checked={Boolean(on)} onChange={e => set(category.id, { on: e.target.checked })}/>
-        <span className="color-dot" style={{ backgroundColor: categoryColor(category) }}/>{category.name}{SPLIT_TAGS[category.id] && <small className="split-tag">{SPLIT_TAGS[category.id]}</small>}</label>
-      <label className="split-pct"><input type="number" min="0" max="100" step="0.01" inputMode="decimal" aria-label={`${category.name} share of income (%)`} aria-invalid={rate === null}
-        value={shares[category.id]?.pct ?? '0'} onChange={e => set(category.id, { pct: e.target.value, on: e.target.value !== '' && Number(e.target.value) > 0 ? true : on })}/>%</label>
-      <strong className="split-amount">{on ? money(amount) : '—'}</strong>
-    </div>)}
-      {personal && <div className="split-row on personal">
-        <span className="split-check"><span className="split-lock" aria-hidden="true"/><span className="color-dot" style={{ backgroundColor: categoryColor(personal) }}/>{personal.name}<small>the rest</small></span>
-        <span className="split-pct"><span className="split-rest">{valid ? (10_000 - totalRate) / 100 : '—'}</span>%</span>
-        <strong className="split-amount">{valid ? money(rest) : '—'}</strong>
-      </div>}
-    </div>
+    <p className="field-help">Tick budgets to set their share aside for this month. Folder totals add up their ticked budgets. Whatever isn’t ticked goes to Personal checking. Percentages are saved for {person.name}.</p>
+    <div className="split-rows">{groups.map(({ folder, categories }) => {
+      const kids = categories.map(category => rows.get(category.id)).filter(Boolean);
+      const isChecking = folder?.kind === 'checking';
+      if (!kids.length && !isChecking) return null;
+      const on = kids.filter(row => row.on && row.rate !== null);
+      const rate = on.reduce((sum, row) => sum + row.rate, 0) + (isChecking && valid ? restRate : 0);
+      const amount = on.reduce((sum, row) => sum + row.amount, 0) + (isChecking && valid ? rest : 0);
+      if (!folder) return <div className="split-group loose" key="none">{kids.length > 0 && <p className="split-folder-name plain">Not in a folder</p>}{kids.map(categoryRow)}</div>;
+      return <div className="split-group" key={folder.id} role="group" aria-label={`${folder.name} folder`}>
+        <div className="split-folder">
+          <span className="split-folder-name"><Folder size={15} style={{ color: folder.color }} aria-hidden="true"/>{folder.name}{folder.kind && <small className="split-tag">{FOLDER_NOTES[folder.kind]}</small>}</span>
+          <span className="split-pct computed" title="Adds up the budgets inside">{invalid.length ? '—' : rate / 100}%</span>
+          <strong className="split-amount">{invalid.length ? '—' : money(amount)}</strong>
+        </div>
+        {kids.map(categoryRow)}
+        {isChecking && restRow}
+      </div>;
+    })}</div>
     {!valid ? <p className="split-total over" role="alert">{invalid.length ? `Enter a share from 0 to 100 for ${invalid.map(row => row.category.name).join(', ')}, with up to two decimals.` : `The ticked shares add up to ${totalRate / 100}%. Remove ${(totalRate - 10_000) / 100}% to save.`}</p>
-      : <p className="split-total done">{totalRate === 10_000 ? 'All 100% goes to the ticked budgets.' : !totalRate ? <>Nothing ticked, so all <strong>{money(rest)}</strong> goes to Personal.</> : <>Ticked budgets get <strong>{money(units - rest)}</strong> ({totalRate / 100}%). The other <strong>{money(rest)}</strong> goes to Personal.</>}</p>}
+      : <p className="split-total done">{totalRate === 10_000 ? 'All 100% goes to the ticked budgets.' : !totalRate ? <>Nothing ticked, so all <strong>{money(rest)}</strong> goes to Personal checking.</> : <>Ticked budgets get <strong>{money(units - rest)}</strong> ({totalRate / 100}%). The other <strong>{money(rest)}</strong> goes to Personal checking.</>}</p>}
   </fieldset>;
+}
+
+const FOLDER_COLORS = ['#4c8363', '#5a9ccc', '#d9a520', '#c46a8f', '#8a6cc4', '#d0703a', '#3f9c9c', '#8a94a3'];
+
+function FolderForm({ item, state, personId, done, close }) {
+  const [color, setColor] = useState(item?.color ?? FOLDER_COLORS[4]);
+  return <ActionForm cancel={close} label={item ? 'Save folder' : 'Add folder'} onSave={fields => {
+    done(current => {
+      const folder = folderFromFields({ ...fields, color }, current, personId, item);
+      return { ...current, folders: item ? current.folders.map(row => row.id === folder.id ? folder : row) : [...(current.folders ?? []), folder] };
+    }, item ? 'Folder saved' : 'Folder added');
+  }}>
+    <label>Folder name<input name="name" defaultValue={item?.name ?? ''} autoFocus required maxLength={40} placeholder="e.g. Home"/></label>
+    <fieldset className="folder-colors"><legend>Color</legend>
+      {FOLDER_COLORS.map(value => <button type="button" key={value} className="swatch" style={{ backgroundColor: value }} aria-pressed={color === value} aria-label={`Color ${value}`} onClick={() => setColor(value)}/>)}
+    </fieldset>
+    <p className="field-help">Custom folders group and total your categories. They don’t change where money goes.</p>
+  </ActionForm>;
 }
 
 function titleValue(value, label) {
@@ -186,7 +231,7 @@ export function Dialogs({ modal, state, totals, me, close, save, onEventSaved })
   const titles = {
     entry: item ? 'Edit entry' : 'Add an entry',
     'wedding-deposit': 'Add a deposit', saving: item ? 'Edit savings record' : modal.direction === 'out' ? 'Take money out' : 'Add a deposit', 'delete-saving': 'Delete savings record?',
-    category: item ? item.name + ' settings' : 'Add a budget category', limit: 'Set budget', 'delete-category': 'Delete category?',
+    category: item ? item.name + ' settings' : 'Add a budget category', folder: item ? item.name + ' folder' : 'Add a folder', 'delete-folder': 'Delete folder?', limit: 'Set budget', 'delete-category': 'Delete category?',
     balance: 'Edit joint balance', goal: item ? 'Edit savings goal' : 'Add a savings goal',
     event: item ? 'Edit event' : 'Add event', 'event-categories': 'Event categories', 'delete-event': item?.repeat ? 'Delete repeating event?' : 'Delete event?', 'delete-entry': 'Delete entry?',
     debt: 'Log a debt', 'settle-debt': 'Confirm payment?',
@@ -207,8 +252,19 @@ export function Dialogs({ modal, state, totals, me, close, save, onEventSaved })
       }}><p className="field-help">Delete this {item.amount < 0 ? 'withdrawal of' : 'deposit of'} {money(Math.abs(item.amount))} from {PEOPLE.find(p => p.id === item.personId)?.name}’s savings? The balance updates right away.</p></ActionForm>;
       break;
     case 'category':
-      content = <CategoryForm {...{ item, state, done, close, me }}/>;
+      content = <CategoryForm {...{ item, state, done, close, me }} folderId={modal.folderId}/>;
       break;
+    case 'folder':
+      content = <FolderForm {...{ item, state, done, close }} personId={item?.ownerId ?? me ?? 'long'}/>;
+      break;
+    case 'delete-folder': {
+      const count = state.categories.filter(category => category.folderId === item.id).length;
+      content = <ActionForm cancel={close} label="Delete folder" onSave={() => done(current => {
+        if (!current.folders?.some(folder => folder.id === item.id)) throw new Error('This folder was already deleted.');
+        return deleteFolder(current, item.id);
+      }, `${item.name} deleted`)}><p className="field-help">Delete the <b>{item.name}</b> folder? {count ? `Its ${count === 1 ? 'category stays' : count + ' categories stay'} on your Budget page, outside any folder.` : 'It’s empty.'}</p></ActionForm>;
+      break;
+    }
     case 'limit':
       content = <ActionForm cancel={close} label="Save limit" onSave={fields => {
         const limit = decimalUnits(fields.limit || '0');
@@ -388,17 +444,22 @@ function DeleteEvent({ event, date, close, done }) {
   </div>;
 }
 
-// One form for putting money aside: into the Wedding goal (a Wedding budget entry, as before)
-// or into the person's own savings, where money can also be taken out.
+// One form for putting money aside: into Joint Savings (logged in the person's Joint saving
+// category for the Wedding goal) or into their own savings, where money can also be taken out.
 function SavingsForm({ state, item, me, destination, direction, person, close, save }) {
   const [where, setWhere] = useState(item ? 'personal' : destination);
   const [way, setWay] = useState(item ? (item.amount < 0 ? 'out' : 'in') : direction ?? 'in');
   const [personId, setPersonId] = useState(item?.personId ?? person ?? me ?? 'long');
   const [initialTime] = useState(() => item?.time ?? localTime());
   const name = PEOPLE.find(p => p.id === personId).name;
+  const depositCategory = jointDepositCategory(state, personId);
   return <ActionForm cancel={close} label={item ? 'Save changes' : way === 'out' && where === 'personal' ? 'Take out' : 'Save deposit'} onSave={fields => {
     if (where === 'wedding') {
-      save(current => ({ ...current, entries: [entryFromFields({ ...fields, personId, type: 'expense', categoryId: WEDDING_CATEGORY_ID }, current), ...current.entries] }), 'Wedding deposit saved');
+      save(current => {
+        const category = jointDepositCategory(current, personId);
+        if (!category) throw new Error(`${name} has no category in the Joint saving folder. Add one on the Budget page first.`);
+        return { ...current, entries: [entryFromFields({ ...fields, personId, type: 'expense', categoryId: category.id }, current), ...current.entries] };
+      }, 'Deposit saved');
     } else {
       save(current => {
         if (item && !current.savings.some(record => record.id === item.id)) throw new Error('This record was deleted on another device. Close the form to see the latest.');
@@ -410,7 +471,7 @@ function SavingsForm({ state, item, me, destination, direction, person, close, s
   }}>
     {!item && <fieldset className="edit-scope">
       <legend>Where should this money go?</legend>
-      {[['wedding', 'Wedding', 'Joint savings, counted toward your Wedding goal'], ['personal', `${name}’s savings`, 'Your own savings, shown on My Savings']].map(([value, label, hint]) =>
+      {[['wedding', 'Joint Savings', 'Counted toward your shared goal'], ['personal', `${name}’s savings`, 'Your own savings, shown on My Savings']].map(([value, label, hint]) =>
         <label key={value} className="scope-option"><input type="radio" name="where" checked={where === value} onChange={() => setWhere(value)}/><span><strong>{label}</strong><small>{hint}</small></span></label>)}
     </fieldset>}
     {where === 'personal' && <div className="segmented" aria-label="Add or take out">
@@ -424,7 +485,7 @@ function SavingsForm({ state, item, me, destination, direction, person, close, s
     </div>
     <label>Amount ($)<input name="amount" type="number" min="0.01" max="1000000000" step="0.01" defaultValue={item ? Math.abs(item.amount) / 100 : ''} required autoFocus/></label>
     {where === 'personal' && <label>Note (optional)<input name="note" maxLength={100} defaultValue={item?.note} placeholder={way === 'out' ? 'e.g. New laptop' : 'e.g. Birthday money'}/></label>}
-    {where === 'wedding' && <p className="field-help">This logs a Wedding budget entry and adds the amount to Joint Savings.</p>}
+    {where === 'wedding' && <p className="field-help">{depositCategory ? <>This logs an entry in {name}’s <b>{depositCategory.name}</b> category (Joint saving folder) and adds it to Joint Savings.</> : `${name} has no category in the Joint saving folder yet. Add one on the Budget page first.`}</p>}
   </ActionForm>;
 }
 

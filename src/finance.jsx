@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
-import { ArrowDownLeft, ArrowDownRight, ArrowRight, CalendarDays, ChevronLeft, ChevronRight, CircleDollarSign, Clock3, Landmark, LockKeyhole, Pencil, PiggyBank, Plus, SlidersHorizontal, Target, Trash2, TrendingUp, TriangleAlert, Wallet, CalendarClock, Search } from 'lucide-react';
+import { ArrowDownLeft, ArrowDownRight, ArrowRight, CalendarDays, ChevronLeft, ChevronRight, CircleDollarSign, Clock3, Landmark, Pencil, PiggyBank, Plus, Target, Trash2, TrendingUp, TriangleAlert, Wallet, CalendarClock, Search } from 'lucide-react';
 import { upcomingEvents } from './events.js';
 import { goalForecast } from './forecast.js';
 import { EMPTY_FILTERS, budgetWarnings, filterEntries, goalPlan, monthLabel, warningLevel } from './insights.js';
-import { PEOPLE, personalBudget, visibleCategories, categoryColor, dateFromKey, displayTime, isPermanentCategory, localDate, reservedNameError, money, shiftMonth, shortDate } from './model.js';
+import { PEOPLE, personalBudget, visibleCategories, categoryColor, dateFromKey, displayTime, localDate, money, shiftMonth, shortDate } from './model.js';
+import { BudgetBoard } from './budget-board.jsx';
 import { PlantPair } from './plants.jsx';
 import { SavingsTree } from './tree.jsx';
-import { CATEGORY_ICONS, Empty, EntryHistory, InlineName, PanelHeading, Person, Progress } from './ui.jsx';
+import { CategoryIcon, Empty, EntryHistory, PanelHeading, Person, Progress, WARN_COLOR, WarningBadge } from './ui.jsx';
 
 export function MonthSelector({ month, setMonth }) {
   return <div className="month-switch">
@@ -16,12 +17,6 @@ export function MonthSelector({ month, setMonth }) {
   </div>;
 }
 
-// Status colors are kept for budget warnings only, always with an icon and words.
-const WARN_COLOR = '#c98a12';
-function WarningBadge({ level, spent, limit }) {
-  return <span className={`warning-badge ${level}`}><TriangleAlert size={12} aria-hidden="true"/>
-    {level === 'over' ? `Over by ${money(spent - limit)}` : `${Math.floor(spent / limit * 100)}% used`}</span>;
-}
 
 function BudgetHeadsUp({ warnings, navigate }) {
   if (!warnings.length) return null;
@@ -59,7 +54,7 @@ function TransactionFilters({ state, filters, setFilters, month, entries, me }) 
       <label>Max $<input type="number" min="0" step="0.01" inputMode="decimal" value={filters.max} onChange={e => set({ max: e.target.value })}/></label>
     </div>
     <div className="filter-summary" role="status">
-      <span><b>{entries.length}</b> {entries.length === 1 ? 'entry' : 'entries'}{income > 0 && <> · <b className="positive">+{money(income)}</b> income</>}{spent > 0 && <> · <b>−{money(spent)}</b> spent</>}</span>
+      <span><b>{entries.length}</b> {entries.length === 1 ? 'entry' : 'entries'}{income > 0 && <> · <b className="positive">+{money(income)}</b> income</>}{spent > 0 && <> · <b className="negative">−{money(spent)}</b> spent</>}</span>
       {active && <button type="button" className="text-link" onClick={() => setFilters(EMPTY_FILTERS)}>Clear filters</button>}
     </div>
   </div>;
@@ -69,10 +64,6 @@ function Stat({ icon: Icon, tone, label, value, caption }) {
   return <article className="card stat"><span className={`icon-tile ${tone}`}><Icon size={19}/></span><p>{label}</p><strong>{money(value)}</strong><small>{caption}</small></article>;
 }
 
-function CategoryIcon({ category, size }) {
-  const Icon = CATEGORY_ICONS[category.icon] ?? CATEGORY_ICONS.tag;
-  return <span className="icon-tile category-icon" style={{ '--category-color': categoryColor(category) }}><Icon size={size}/></span>;
-}
 
 function CategorySummary({ budget, navigate, mine }) {
   // Your categories with the most spending this month come first.
@@ -159,9 +150,9 @@ export function Dashboard({ state, totals, me, open, navigate }) {
     <BudgetHeadsUp warnings={budgetWarnings(budget, localDate())} navigate={navigate}/>
     <div className="stats-grid">
       {/* Signed in, income is the signed-in person's own; otherwise both profiles combined. */}
-      {name ? <Stat icon={ArrowDownLeft} tone="mint" label="Your income" value={totals.people[me].income} caption={`This month · ${name} only`}/>
-        : <Stat icon={ArrowDownLeft} tone="mint" label="Total income" value={totals.income} caption="This month · both profiles"/>}
-      <Stat icon={Wallet} tone="rose" label={name ? 'Your spending' : 'Total spending'} value={budget.spent} caption={`Of ${money(budget.budgeted, true)} budgeted this month`}/>
+      {name ? <Stat icon={ArrowDownLeft} tone="income" label="Your income" value={totals.people[me].income} caption={`This month · ${name} only`}/>
+        : <Stat icon={ArrowDownLeft} tone="income" label="Total income" value={totals.income} caption="This month · both profiles"/>}
+      <Stat icon={Wallet} tone="expense" label={name ? 'Your spending' : 'Total spending'} value={budget.spent} caption={`Of ${money(budget.budgeted, true)} budgeted this month`}/>
       <Stat icon={PiggyBank} tone="indigo" label="Joint savings" value={totals.jointBalance} caption="Across all saved contributions"/>
     </div>
     <div className="dashboard-columns">
@@ -192,46 +183,14 @@ export function Budget({ state, totals, month, me, save, open, edit, remove }) {
   const name = PEOPLE.find(person => person.id === me)?.name;
   return <>
     <div className="stats-grid">
-      <Stat icon={Landmark} tone="indigo" label={name ? 'Your monthly budget' : 'Monthly budget'} value={budget.budgeted} caption={name ? 'Only you can see your categories and limits' : 'Across all spending categories'}/>
-      <Stat icon={ArrowDownRight} tone="rose" label={name ? 'You spent this month' : 'Spent this month'} value={budget.spent} caption={`${state.entries.filter(e => e.type === 'expense' && e.date.startsWith(month + '-') && (!me || e.personId === me)).length} expense entries`}/>
-      <Stat icon={CircleDollarSign} tone={budget.spent > budget.budgeted ? 'rose' : 'mint'} label="Budget remaining" value={budget.budgeted - budget.spent} caption="Budget minus what you spent"/>
+      <Stat icon={Landmark} tone="indigo" label={name ? 'Your monthly budget' : 'Monthly budget'} value={budget.budgeted} caption={name ? 'Only you see it · saving folders not included' : 'Saving folders not included'}/>
+      <Stat icon={ArrowDownRight} tone="expense" label={name ? 'You spent this month' : 'Spent this month'} value={budget.spent} caption="Money put into savings isn’t counted"/>
+      <Stat icon={CircleDollarSign} tone={budget.spent > budget.budgeted ? 'expense' : 'income'} label="Budget remaining" value={budget.budgeted - budget.spent} caption="Budget minus what you spent"/>
     </div>
     <section className="card">
-      <PanelHeading title={name ? 'Your budget categories' : 'Budget categories'} subtitle={name ? 'Private to you. Your partner can see what you spend in each, but not your limits or what’s left.' : 'Click a name to rename it.'}
+      <PanelHeading title={name ? 'Your budget categories' : 'Budget categories'} subtitle={name ? 'Private to you: your folders, order and limits. Drag a category by its handle to reorder it or move it into a folder.' : 'Drag a category by its handle to reorder it or move it into a folder.'}
         action={<button className="btn secondary" onClick={() => open({ kind: 'category' })}><Plus size={17}/> Add Category</button>}/>
-      <div className="budget-table" role="table" aria-label="Budget by category">
-        <div className="budget-head" role="row"><span role="columnheader">Category</span><span role="columnheader">Budget</span><span role="columnheader">Spent</span><span role="columnheader">Remaining</span><span role="columnheader">Used</span><span role="columnheader"><span className="sr-only">Actions</span></span></div>
-        {budget.categories.map(category => {
-          const spent = budget.spentByCategory.get(category.id) ?? 0;
-          const limit = budget.limit(category);
-          const permanent = isPermanentCategory(category.id);
-          const level = warningLevel(spent, limit);
-          const used = limit ? Math.round(spent / limit * 100) : null;
-          const funded = budget.fundedByCategory.get(category.id);
-          return <div className={level ? `budget-row ${level}` : 'budget-row'} role="row" key={category.id}>
-            <div className="budget-name" role="cell"><CategoryIcon category={category} size={17}/>
-              <div>{permanent ? <span className="rename"><strong>{category.name}</strong><LockKeyhole size={13} aria-label="Shared permanent category"/></span>
-                : <InlineName name={category.name} save={name => {
-                  if (reservedNameError(name)) throw new Error(reservedNameError(name));
-                  save(current => ({ ...current, categories: current.categories.map(item => item.id === category.id ? { ...item, name } : item) }), 'Category renamed');
-                }}/>}
-                {funded > 0 && <small className="set-aside">{money(funded)} set aside from income</small>}</div>
-            </div>
-            <div className="budget-cell" role="cell" data-label="Budget"><button className="budget-limit" onClick={() => open({ kind: 'limit', item: category })} aria-label={`Set ${category.name} budget`}>{limit ? money(limit) : <><Plus size={13}/> Add budget</>}</button></div>
-            <div className="budget-cell" role="cell" data-label="Spent"><strong className={level === 'over' ? 'negative' : ''}>{money(spent)}</strong></div>
-            <div className="budget-cell" role="cell" data-label="Remaining">{limit ? <strong className={limit - spent < 0 ? 'negative' : ''}>{limit - spent < 0 ? '−' : ''}{money(Math.abs(limit - spent))}</strong> : <span className="muted-dash">—</span>}</div>
-            <div className="budget-cell budget-used" role="cell" data-label="Used">
-              {limit ? <><Progress value={spent} max={limit} color={level === 'warn' ? WARN_COLOR : level === 'over' ? undefined : categoryColor(category)} tone="rose" label={`${category.name} ${used}% used`}/>
-                <span className="used-figure">{level ? <WarningBadge level={level} spent={spent} limit={limit}/> : `${used}%`}</span></>
-                : <span className="muted-dash">No budget set</span>}
-            </div>
-            <div className="budget-actions" role="cell">
-              <button className="icon-btn" aria-label={`${category.name} category settings`} title="Color and rates" onClick={() => open({ kind: 'category', item: category })}><SlidersHorizontal size={15}/></button>
-              {!permanent && <button className="icon-btn danger" aria-label={`Delete ${category.name} category`} title="Delete category" onClick={() => open({ kind: 'delete-category', item: category })}><Trash2 size={15}/></button>}
-            </div>
-          </div>;
-        })}
-      </div>
+      <BudgetBoard state={state} budget={budget} me={me} save={save} open={open}/>
     </section>
   <div className="profile-grid">
       {PEOPLE.map(person => {

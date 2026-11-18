@@ -5,8 +5,10 @@ import { householdTotals, monthLabel, periodRange, periodSummary, shiftMonth, tr
 import { Avatar, Empty, PanelHeading } from './ui.jsx';
 
 // Income and spending colors for charts: checked for colorblind separation and contrast on the card.
-const INCOME = '#2f78b7';
-const SPENDING = '#e0762f';
+// Income green, spending red. The pair was checked for color-blind separation (lighter red,
+// darker green); the legend, tooltip and table view carry the labels too.
+const INCOME = '#0f7a5a';
+const SPENDING = '#f2766d';
 
 const shortMoney = cents => {
   const dollars = cents / 100;
@@ -33,10 +35,10 @@ export function Insights({ state }) {
   const step = by => setKey(mode === 'month' ? shiftMonth(key, by) : String(Number(key) + by));
   return <>
     <div className="insights-period" role="group" aria-label="Period">
-      <div className="segmented period-mode"><button type="button" aria-pressed={mode === 'month'} onClick={() => chooseMode('month')}>Month</button><button type="button" aria-pressed={mode === 'year'} onClick={() => chooseMode('year')}>Year</button></div>
+      <div className="segmented period-mode" aria-label="Month or year"><button type="button" aria-pressed={mode === 'month'} onClick={() => chooseMode('month')}>Month</button><button type="button" aria-pressed={mode === 'year'} onClick={() => chooseMode('year')}>Year</button></div>
       <div className="month-switch">
         <button className="icon-btn" aria-label={`Previous ${mode}`} onClick={() => step(-1)}><ChevronLeft size={17}/></button>
-        <strong>{period.label}</strong>
+        <strong><span className="label-long">{period.label}</span><span className="label-short" aria-hidden="true">{mode === 'month' ? dateFromKey(key + '-01').toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : key}</span></strong>
         <button className="icon-btn" aria-label={`Next ${mode}`} onClick={() => step(1)} disabled={key >= latest}><ChevronRight size={17}/></button>
       </div>
       <div className="segmented period-mode" aria-label="Whose money">
