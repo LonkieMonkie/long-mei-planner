@@ -194,12 +194,15 @@ function App() {
     backend.current.transact(current => ({
       ...current, json: JSON.stringify(update(readState({ getItem: () => current.json }))),
       rev: (current.rev ?? 0) + 1, updatedAt: new Date().toISOString(), updatedBy: uid,
-    })).catch(() => {
+    })).catch(error => {
       if (remote.current) {
         try { localStorage.setItem(STORAGE_KEY, remote.current.json); } catch { /* Ignored: the next sync replaces it. */ }
         setLoaded(loadDashboard());
       }
-      setNotice({ message: 'That change wasn’t saved to your shared planner. Check your connection and try again.', warn: true });
+      // Firebase errors carry a code; anything else means the change no longer fits the latest
+      // shared copy (for example, the other phone deleted what was being edited).
+      setNotice({ message: error?.code ? 'That change wasn’t saved to your shared planner. Check your connection and try again.'
+        : `That change wasn’t saved: ${error?.message ?? 'the planner changed on another device.'}`, warn: true });
     });
   }
   const navigate = id => { window.location.hash = id; };

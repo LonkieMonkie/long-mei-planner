@@ -4,6 +4,8 @@ export const CHANGELOG = [
   { version: '2.11.1', date: '2026-11-17', changes: [
     'Fixed: typing a share over 100% or with more than two decimals in the income split no longer makes the app go blank.',
     'If a screen or form ever hits an error, it now shows a message with Try again and Reload instead of a blank page.',
+    'The savings tree is much lighter on phones: far fewer shapes to draw, and branches are drawn only near what’s on screen.',
+    'Editing something the other phone just deleted now tells you, instead of quietly dropping the edit.',
   ] },
   { version: '2.11.0', date: '2026-11-17', changes: [
     'Event categories: create, rename, recolor and delete them from the calendar.',

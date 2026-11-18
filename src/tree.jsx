@@ -86,11 +86,16 @@ function sprayDabs(seed) {
 }
 const SPRAYS = [21, 47, 83].map(sprayDabs);
 
+// All dabs of one shade are drawn as a single path, so each cluster is a handful of elements
+// instead of dozens of circles. That keeps the page light enough for phones.
+const circlePath = ({ x, y, r }) => `M${(x - r).toFixed(1)} ${y.toFixed(1)}a${r.toFixed(1)} ${r.toFixed(1)} 0 1 0 ${(2 * r).toFixed(1)} 0a${r.toFixed(1)} ${r.toFixed(1)} 0 1 0 ${(-2 * r).toFixed(1)} 0`;
+const byShade = (dabs, shadeOf) => [0, 1, 2, 3, 4].map(shade => dabs.filter(dab => shadeOf(dab) === shade).map(circlePath).join('')).map((d, shade) => [shade, d]).filter(([, d]) => d);
+
 function SprayDefs({ look }) {
   const fills = [...look.leaves, look.dots];
   return <defs>
-    {SPRAYS.map((dabs, v) => <g id={`tree-spray-${v}`} key={v}>{dabs.map((dab, i) => <circle key={i} cx={dab.x} cy={dab.y} r={dab.r} fill={fills[dab.shade]}/>)}</g>)}
-    <g id="tree-spray-back">{SPRAYS[0].filter(dab => dab.shade < 3).map((dab, i) => <circle key={i} cx={dab.x} cy={dab.y} r={dab.r} fill={fills[Math.min(1, dab.shade)]}/>)}</g>
+    {SPRAYS.map((dabs, v) => <g id={`tree-spray-${v}`} key={v}>{byShade(dabs, dab => dab.shade).map(([shade, d]) => <path key={shade} d={d} fill={fills[shade]}/>)}</g>)}
+    <g id="tree-spray-back">{byShade(SPRAYS[0].filter(dab => dab.shade < 3), dab => Math.min(1, dab.shade)).map(([shade, d]) => <path key={shade} d={d} fill={fills[shade]}/>)}</g>
     <linearGradient id="tree-hill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#a9d77c"/><stop offset=".35" stopColor="#7fbf6c"/><stop offset="1" stopColor="#5fa564"/></linearGradient>
   </defs>;
 }
@@ -145,7 +150,25 @@ export function SavingsTree({ balance, tree }) {
     el.scrollTo({ top: Math.max(0, (groundY - meters * PX - 120) * scale), behavior: smooth ? 'smooth' : 'auto' });
   };
   // Start at the treetop, and follow it when the balance changes.
-  useLayoutEffect(() => { scrollToMeters(target, false); }, [target, tree.kind]);
+  useLayoutEffect(() => { scrollToMeters(target, false); measure(); }, [target, tree.kind]);
+
+  // Which part of the scene is on screen, in drawing units. Branches and meter lines are only
+  // drawn within a screen's height of it, so a very tall tree stays light.
+  const [view, setView] = useState(null);
+  const frame = useRef(0);
+  function measure() {
+    const el = scroller.current;
+    if (!el) return;
+    const scale = el.scrollHeight / totalH;
+    setView({ top: el.scrollTop / scale, bottom: (el.scrollTop + el.clientHeight) / scale });
+  }
+  const onScroll = () => { cancelAnimationFrame(frame.current); frame.current = requestAnimationFrame(measure); };
+  useEffect(() => {
+    window.addEventListener('resize', onScroll);
+    return () => { window.removeEventListener('resize', onScroll); cancelAnimationFrame(frame.current); };
+  }, [totalH]);
+  const span = view ? view.bottom - view.top : 900;
+  const near = y => view ? y > view.top - span - 60 && y < view.bottom + span + 60 : y > treeTop - 900 && y < treeTop + 1800;
 
   // A bird lands now and then on a branch that is on screen.
   const perches = useRef([]);
@@ -189,7 +212,7 @@ export function SavingsTree({ balance, tree }) {
         {sky.moon && <span className="tree-moon" style={{ left: sky.moon.x + '%', top: sky.moon.y + '%' }}/>}
         <span className="tree-cloud one"/><span className="tree-cloud two"/><span className="tree-cloud three"/>
       </div>
-      <div className="tree-scroll" ref={scroller} tabIndex={0} role="img" aria-label={`${kindName} tree, ${target.toFixed(1)} meters tall. One meter for every ${money(tree.perMeter, true)} saved.`} {...pointer}>
+      <div className="tree-scroll" ref={scroller} onScroll={onScroll} tabIndex={0} role="img" aria-label={`${kindName} tree, ${target.toFixed(1)} meters tall. One meter for every ${money(tree.perMeter, true)} saved.`} {...pointer}>
         <svg className="tree-svg" viewBox={`0 0 ${W} ${totalH}`} preserveAspectRatio="xMidYMax meet">
           <SprayDefs look={look}/>
           <g className="tree-bank">{CLOUD_BANK.map(([dx, dy, r], i) => <circle key={i} cx={CX + dx} cy={groundY - dy} r={r} fill="#fff"/>)}</g>
@@ -199,7 +222,7 @@ export function SavingsTree({ balance, tree }) {
           {h > 0 && <g className="tree-plant">
             <path d={`M${CX - baseW / 2 - baseW * .35} ${groundY + 4}Q${CX - baseW / 2} ${groundY - 2} ${CX - baseW / 2} ${groundY - baseW * .7}L${CX - topW / 2} ${trunkTop}H${CX + topW / 2}L${CX + baseW / 2} ${groundY - baseW * .7}Q${CX + baseW / 2} ${groundY - 2} ${CX + baseW / 2 + baseW * .35} ${groundY + 4}Z`} fill={look.trunk}/>
             <path d={`M${CX + baseW * .14} ${groundY - baseW * .5}L${CX + topW * .12} ${trunkTop}H${CX + topW * .36}L${CX + baseW * .36} ${groundY - baseW * .5}Z`} fill={look.bark} opacity=".3"/>
-            {branches.map(branch => {
+            {branches.filter(branch => near(branch.y)).map(branch => {
               const { k, side, x, y, length, lift } = branch;
               const ex = x + side * length, ey = y - lift * branch.grown;
               return <g key={k}>
@@ -225,7 +248,7 @@ export function SavingsTree({ balance, tree }) {
             </g>
             {perch && <Bird key={bird.id} x={perch.top ? CX + R * .1 : perch.x + perch.side * perch.length * .62} y={perch.top ? treeTop + (look.cone ? R * .62 : R * .12) : perch.y - perch.lift * .55} side={perch.top ? -1 : perch.side}/>}
           </g>}
-          {lines.map(m => {
+          {lines.filter(m => near(groundY - m * PX)).map(m => {
             const y = groundY - m * PX, reached = m <= h + 1e-9, amount = money(m * tree.perMeter, true);
             return <g key={m} className={reached ? 'tree-line reached' : 'tree-line'}>
               <line x1="-900" x2="1300" y1={y} y2={y}/>

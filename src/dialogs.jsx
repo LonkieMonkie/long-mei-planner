@@ -29,7 +29,7 @@ function EntryForm({ state, item, date, person, me, weddingDeposit = false, clos
     }
     save(current => {
       if (item && !current.entries.some(entry => entry.id === item.id && entry.editedAt === item.editedAt)) {
-        throw new Error('This entry changed in another tab. Close the form and open it again.');
+        throw new Error('This entry was changed or deleted on another device. Close the form and open it again.');
       }
       const entry = entryFromFields(fields, current, item);
       // The percentages shown become this person's saved shares, ticked or not.
