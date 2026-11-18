@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ArrowDownLeft, ArrowUpRight, Pencil, PiggyBank, Plus, Trash2 } from 'lucide-react';
 import { PEOPLE, PERSONAL_CATEGORY_ID, SAVINGS_CATEGORY_ID, WEDDING_CATEGORY_ID, categoryColor, dateFromKey, contribution, debtFromFields, decimalUnits, entryContribution, entryFromFields, incomeSplits, entryTime, localDate, localTime, money, shortDate, savingsRule, setJointBalance, settleDebt } from './model.js';
-import { ActionForm, Modal } from './ui.jsx';
+import { ActionForm, ErrorBoundary, Modal } from './ui.jsx';
 import { CategoryForm } from './category-form.jsx';
 import { EVENT_COLORS, REPEATS, deleteEvent, deleteEventCategory, editEvent, eventCategoryFromFields, eventFromFields, occurrenceIndex } from './events.js';
 import { savingsFromFields } from './personal-savings.js';
@@ -106,7 +106,9 @@ function IncomeSplit({ state, shares, setShares, units, person }) {
     if (on && rate !== null) { total += amount; totalRate += rate; }
     return { category, rate, on, amount };
   });
-  const valid = totalRate <= 10_000;
+  // A ticked share that isn't a number from 0 to 100 (with up to two decimals) blocks the split.
+  const invalid = rows.filter(row => row.on && row.rate === null);
+  const valid = !invalid.length && totalRate <= 10_000;
   let rest = valid ? units - total : 0;
   if (valid) {
     // Show the same cent-exact amounts that will be saved, Personal included.
@@ -130,7 +132,7 @@ function IncomeSplit({ state, shares, setShares, units, person }) {
         <strong className="split-amount">{valid ? money(rest) : '—'}</strong>
       </div>}
     </div>
-    {!valid ? <p className="split-total over" role="alert">{Number.isNaN(totalRate) ? 'Fix the highlighted percentage to see the split.' : `The ticked shares add up to ${totalRate / 100}%. Remove ${(totalRate - 10_000) / 100}% to save.`}</p>
+    {!valid ? <p className="split-total over" role="alert">{invalid.length ? `Enter a share from 0 to 100 for ${invalid.map(row => row.category.name).join(', ')}, with up to two decimals.` : `The ticked shares add up to ${totalRate / 100}%. Remove ${(totalRate - 10_000) / 100}% to save.`}</p>
       : <p className="split-total done">{totalRate === 10_000 ? 'All 100% goes to the ticked budgets.' : !totalRate ? <>Nothing ticked, so all <strong>{money(rest)}</strong> goes to Personal.</> : <>Ticked budgets get <strong>{money(units - rest)}</strong> ({totalRate / 100}%). The other <strong>{money(rest)}</strong> goes to Personal.</>}</p>}
   </fieldset>;
 }
@@ -214,7 +216,7 @@ export function Dialogs({ modal, state, totals, me, close, save, onEventSaved })
       }}><p className="field-help">{`Delete the ${item.source} entry for ${money(item.amount)}?${entryContribution(item) ? ' Its ' + money(entryContribution(item)) + ' joint contribution will be reversed.' : ''}`}</p></ActionForm>;
       break;
   }
-  return <Modal title={titles[kind]} close={close}>{content}</Modal>;
+  return <Modal title={titles[kind]} close={close}><ErrorBoundary onClose={close}>{content}</ErrorBoundary></Modal>;
 }
 
 function DebtForm({ close, done, me }) {

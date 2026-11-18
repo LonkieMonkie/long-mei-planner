@@ -1,6 +1,6 @@
 {
   "name": "long-mei-planner",
-  "version": "2.11.0",
+  "version": "2.11.1",
   "private": true,
   "type": "module",
   "scripts": {"dev":"vite --host 0.0.0.0","build":"vite build","test":"node --test tests/dashboard.test.js","preview":"vite preview"},

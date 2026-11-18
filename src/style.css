@@ -407,6 +407,8 @@ button.secondary:active { box-shadow: 0 1px 0 var(--color-line); }
 .category-color-input::-webkit-color-swatch-wrapper { padding: 0; }
 .category-color-input::-webkit-color-swatch { border: 0; border-radius: 50%; }
 .category-color-input::-moz-color-swatch { border: 0; border-radius: 50%; }
+.crash-note { display: grid; gap: 8px; padding: 18px; border: 1.5px solid #e7b3c0; border-radius: 20px; background: #fdf1f4; font-size: 13px; }
+.crash-note strong { font-size: 15px; }
 .delete-choices { display: grid; gap: 8px; }
 .danger-text { color: #a5254a; }
 .danger-text:hover { background: #fce9ee; }

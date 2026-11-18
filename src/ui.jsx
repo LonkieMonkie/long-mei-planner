@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { Component, createContext, useContext, useEffect, useRef, useState } from 'react';
 import { ArrowDownLeft, ArrowUpRight, Car, Heart, Pencil, PiggyBank, Receipt, ShoppingBasket, Tag, Trash2, Utensils, X } from 'lucide-react';
 import { PEOPLE, categoryColor, entryContribution, goalShares, money, shortDate, timestamp } from './model.js';
 
@@ -101,4 +101,27 @@ export function InlineName({ name, save }) {
       : <button className="rename" onClick={() => { setDraft(name); setError(''); setEditing(true); }}>{name}<Pencil size={13}/></button>}
     {error && <small className="form-error" role="alert">{error}</small>}
   </div>;
+}
+
+// Keeps one broken screen or form from blanking the whole app. `resetKey` changing (for
+// example, moving to another page or closing a form) clears the error.
+export class ErrorBoundary extends Component {
+  state = { error: null, key: undefined };
+  static getDerivedStateFromError(error) { return { error }; }
+  static getDerivedStateFromProps(props, state) {
+    return props.resetKey !== state.key ? { error: null, key: props.resetKey } : null;
+  }
+  componentDidCatch(error, info) { console.error('Planner screen error:', error, info.componentStack); }
+  render() {
+    if (!this.state.error) return this.props.children;
+    return <div className="crash-note" role="alert">
+      <strong>Something went wrong on this screen.</strong>
+      <p>Nothing was saved from it. {this.props.onClose ? 'Close it and try again.' : 'Try again, or reload the page.'}</p>
+      <div className="form-actions">
+        {this.props.onClose ? <button className="btn primary" onClick={this.props.onClose}>Close</button>
+          : <button className="btn primary" onClick={() => this.setState({ error: null })}>Try again</button>}
+        <button className="btn secondary" onClick={() => window.location.reload()}>Reload</button>
+      </div>
+    </div>;
+  }
 }

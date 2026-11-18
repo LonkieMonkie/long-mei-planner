@@ -1,6 +1,10 @@
 // What changed in each release, newest first. Add an entry and bump "version" in
 // package.json together; a test checks that they match.
 export const CHANGELOG = [
+  { version: '2.11.1', date: '2026-11-17', changes: [
+    'Fixed: typing a share over 100% or with more than two decimals in the income split no longer makes the app go blank.',
+    'If a screen or form ever hits an error, it now shows a message with Try again and Reload instead of a blank page.',
+  ] },
   { version: '2.11.0', date: '2026-11-17', changes: [
     'Event categories: create, rename, recolor and delete them from the calendar.',
     'Show or hide each category’s events with one click above the calendar.',

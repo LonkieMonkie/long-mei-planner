@@ -15,7 +15,7 @@ import { workbook } from './excel.js';
 import { repeatSummary } from './events.js';
 import { AccountCard, AccountGate, ProfilePictureCard } from './account.jsx';
 import { AVATAR_KEY, cleanAvatars, readLocalAvatars } from './avatars.js';
-import { Avatar, AvatarContext } from './ui.jsx';
+import { Avatar, AvatarContext, ErrorBoundary } from './ui.jsx';
 import { connect } from './cloud.js';
 import { firebaseConfig } from './firebase-config.js';
 import './style.css';
@@ -236,6 +236,7 @@ function App() {
       </header>
       {error && <p className="inline-alert" role="alert">Saved data could not be loaded. {error}</p>}
       <div className="page-body">
+        <ErrorBoundary resetKey={active}>
         {active === 'dashboard' && <Dashboard state={state} totals={totals} me={session.me} open={setModal} navigate={navigate}/>}
         {active === 'budget' && <Budget {...{ state, totals, month, save, edit, remove }} open={setModal}/>}
         {active === 'calendar' && <CalendarView state={state} open={setModal} month={calendarMonth} setMonth={setCalendarMonth} selected={selectedDay} setSelected={setSelectedDay}/>}
@@ -243,6 +244,7 @@ function App() {
         {active === 'my-savings' && <MySavings state={state} me={session.me} open={setModal} editEntry={edit}/>}
         {active === 'debts' && <DebtTracker debts={state.debts} open={setModal}/>}
         {active === 'settings' && <>{cloudOn && <AccountCard session={session} signOut={signOut}/>}<ProfilePictureCard me={session.me} avatars={avatars} setAvatar={setAvatar} notify={message => setNotice({ message })}/><Settings key={state.accentColor} accent={state.accentColor} save={save}/><TreeSettings key={state.tree.kind + state.tree.perMeter} tree={state.tree} save={save}/><ExportCard onExport={() => exportExcel(state, totals)}/><VersionCard/></>}
+        </ErrorBoundary>
       </div>
     </main>
     {modal && <Dialogs key={modal.kind + (modal.item?.id ?? '')} {...{ modal, state, totals, save }} me={session.me} close={() => setModal(null)} onEventSaved={date => { setSelectedDay(date); setCalendarMonth(date.slice(0, 7)); }}/>}
