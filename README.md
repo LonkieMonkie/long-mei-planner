@@ -36,6 +36,14 @@ This version stores its records in ordinary browser localStorage. Each browser a
 
 The dashboard uses a new storage key. It leaves data in the earlier encrypted planner untouched and does not import those records. Export or back up the earlier planner before deploying this version if you need to retain access to those records.
 
+## Insights, warnings and shared expenses
+
+- Insights recaps a month or a year: income, spending, what was left over and saved, spending by category, a comparison with the period before, a 6 or 12 month trend, and highlights. Deposits into joint goals count as saved there, not spent.
+- A budget category turns amber at 80% of its limit and red when it's over, and the dashboard lists those categories with the money left and days to go.
+- The Budget page's entry history can be searched and filtered by text, type, category, person, amount and date range.
+- An expense can be shared with the other person at any ratio. The whole expense stays in the payer's budget, and the other person's share becomes a linked debt that follows edits and deletes; a settled one is kept.
+- A goal can have a target date, which shows how much to save each month and whether the current pace gets there in time.
+
 ## Profile pictures
 
 Each person can set a profile picture in Settings. Photos are cropped square and shrunk to a small JPEG in the browser. With sync on they're stored in the Firestore document `planner/avatars` (covered by the same rules); otherwise in this browser.

@@ -1,6 +1,13 @@
 // What changed in each release, newest first. Add an entry and bump "version" in
 // package.json together; a test checks that they match.
 export const CHANGELOG = [
+  { version: '2.12.0', date: '2026-11-18', changes: [
+    'New Insights tab: a monthly or yearly recap, spending by category, a comparison with the period before, a 6 or 12 month trend, and highlights.',
+    'Budget warnings: categories turn amber at 80% of their limit and red when over, with a heads-up on the dashboard.',
+    'Search and filter the entry history by text, type, category, person, amount and dates.',
+    'Shared expenses: split an expense with the other person and their share goes to the Debt Tracker automatically.',
+    'Goals can have a target date, showing how much to save each month and whether you’re on track.',
+  ] },
   { version: '2.11.2', date: '2026-11-17', changes: [
     'The dashboard’s income figure now shows only the signed-in person’s income for the month.',
   ] },

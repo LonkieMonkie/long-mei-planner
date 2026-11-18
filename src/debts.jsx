@@ -29,7 +29,7 @@ export function DebtTracker({ debts, open }) {
         {debts.map(debt => <article key={debt.id} className="debt-row">
           <div className="debt-details"><h3>{debt.description}</h3>
             <div className="debt-direction"><Person id={debt.debtorId}/><span>owes</span><Person id={debt.creditorId}/></div>
-            <p>Logged by {PEOPLE.find(person => person.id === debt.addedBy).name} · {timestamp(debt.createdAt)}</p>
+            <p>{debt.linkedEntryId ? 'From a shared expense' : 'Logged'} by {PEOPLE.find(person => person.id === debt.addedBy).name} · {timestamp(debt.createdAt)}</p>
           </div>
           <div className="debt-action"><strong>{money(debt.amount)}</strong>
             {debt.settledAt ? <span className="debt-paid"><Check size={15}/> Settled {timestamp(debt.settledAt)}</span>

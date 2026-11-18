@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { ArrowDownLeft, ArrowDownRight, ArrowRight, CalendarDays, ChevronLeft, ChevronRight, CircleDollarSign, Clock3, Landmark, LockKeyhole, Pencil, PiggyBank, Plus, SlidersHorizontal, Target, TrendingUp, Wallet } from 'lucide-react';
+import { ArrowDownLeft, ArrowDownRight, ArrowRight, CalendarDays, ChevronLeft, ChevronRight, CircleDollarSign, Clock3, Landmark, LockKeyhole, Pencil, PiggyBank, Plus, SlidersHorizontal, Target, TrendingUp, TriangleAlert, Wallet, CalendarClock, Search } from 'lucide-react';
 import { upcomingEvents } from './events.js';
 import { goalForecast } from './forecast.js';
+import { EMPTY_FILTERS, budgetWarnings, filterEntries, goalPlan, monthLabel, warningLevel } from './insights.js';
 import { PEOPLE, categoryColor, dateFromKey, displayTime, isPermanentCategory, localDate, reservedNameError, money, shiftMonth, shortDate } from './model.js';
 import { PlantPair } from './plants.jsx';
 import { SavingsTree } from './tree.jsx';
@@ -12,6 +13,55 @@ export function MonthSelector({ month, setMonth }) {
     <button className="icon-btn" aria-label="Previous budget month" onClick={() => setMonth(shiftMonth(month, -1))}><ChevronLeft size={16}/></button>
     <span><CalendarDays size={15}/>{dateFromKey(month + '-01').toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}</span>
     <button className="icon-btn" aria-label="Next budget month" onClick={() => setMonth(shiftMonth(month, 1))}><ChevronRight size={16}/></button>
+  </div>;
+}
+
+// Status colors are kept for budget warnings only, always with an icon and words.
+const WARN_COLOR = '#c98a12';
+function WarningBadge({ level, spent, limit }) {
+  return <span className={`warning-badge ${level}`}><TriangleAlert size={12} aria-hidden="true"/>
+    {level === 'over' ? `Over by ${money(spent - limit)}` : `${Math.floor(spent / limit * 100)}% used`}</span>;
+}
+
+function BudgetHeadsUp({ warnings, navigate }) {
+  if (!warnings.length) return null;
+  return <section className="card heads-up" aria-label="Budget heads-up">
+    <PanelHeading title="Budget heads-up" subtitle={`${warnings.length} ${warnings.length === 1 ? 'category is' : 'categories are'} close to or over the monthly limit`}
+      action={<button className="text-link" onClick={() => navigate('budget')}>Budget <ArrowRight size={14}/></button>}/>
+    <ul className="heads-up-list">{warnings.map(row => <li key={row.category.id} className={row.level}>
+      <TriangleAlert size={16} aria-hidden="true"/>
+      <span><strong>{row.category.name}</strong>{row.level === 'over'
+        ? <> is <b>{money(row.spent - row.limit)} over</b> its {money(row.limit, true)} limit</>
+        : <>: <b>{money(row.left)} left</b> with {row.daysLeft} {row.daysLeft === 1 ? 'day' : 'days'} to go</>}</span>
+    </li>)}</ul>
+  </section>;
+}
+
+function TransactionFilters({ state, filters, setFilters, month, entries }) {
+  const set = change => setFilters(current => ({ ...current, ...change }));
+  const active = JSON.stringify(filters) !== JSON.stringify(EMPTY_FILTERS);
+  const income = entries.filter(entry => entry.type === 'income').reduce((sum, entry) => sum + entry.amount, 0);
+  const spent = entries.filter(entry => entry.type === 'expense').reduce((sum, entry) => sum + entry.amount, 0);
+  return <div className="transaction-filters">
+    <label className="filter-search"><Search size={16} aria-hidden="true"/><input type="search" value={filters.text} onChange={e => set({ text: e.target.value })} placeholder="Search source, category, person or amount" aria-label="Search entries"/></label>
+    <div className="filter-fields">
+      <label>When<select value={filters.range} onChange={e => set({ range: e.target.value })}>
+        <option value="month">{monthLabel(month)}</option><option value="all">All time</option><option value="custom">Date range</option>
+      </select></label>
+      {filters.range === 'custom' && <>
+        <label>From<input type="date" value={filters.from} max={filters.to || undefined} onChange={e => set({ from: e.target.value })}/></label>
+        <label>To<input type="date" value={filters.to} min={filters.from || undefined} onChange={e => set({ to: e.target.value })}/></label>
+      </>}
+      <label>Type<select value={filters.type} onChange={e => set({ type: e.target.value })}><option value="all">All types</option><option value="income">Income</option><option value="expense">Expenses</option></select></label>
+      <label>Category<select value={filters.categoryId} onChange={e => set({ categoryId: e.target.value })}><option value="all">All categories</option>{state.categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
+      <label>Who<select value={filters.personId} onChange={e => set({ personId: e.target.value })}><option value="all">Both of you</option>{PEOPLE.map(person => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label>
+      <label>Min $<input type="number" min="0" step="0.01" inputMode="decimal" value={filters.min} onChange={e => set({ min: e.target.value })}/></label>
+      <label>Max $<input type="number" min="0" step="0.01" inputMode="decimal" value={filters.max} onChange={e => set({ max: e.target.value })}/></label>
+    </div>
+    <div className="filter-summary" role="status">
+      <span><b>{entries.length}</b> {entries.length === 1 ? 'entry' : 'entries'}{income > 0 && <> · <b className="positive">+{money(income)}</b> income</>}{spent > 0 && <> · <b>−{money(spent)}</b> spent</>}</span>
+      {active && <button type="button" className="text-link" onClick={() => setFilters(EMPTY_FILTERS)}>Clear filters</button>}
+    </div>
   </div>;
 }
 
@@ -57,7 +107,19 @@ function GoalForecast({ goal, entries, total }) {
       note = basisNote(forecast);
     }
   }
-  return <div className={`goal-forecast ${forecast.status}`}><TrendingUp size={16} aria-hidden="true"/><p>{line}{note && <small>{note}</small>}</p></div>;
+  const plan = goalPlan(goal, total, forecast, localDate());
+  return <>
+    <div className={`goal-forecast ${forecast.status}`}><TrendingUp size={16} aria-hidden="true"/><p>{line}{note && <small>{note}</small>}</p></div>
+    {plan && plan.status !== 'reached' && <GoalDeadline goal={goal} plan={plan}/>}
+  </>;
+}
+
+function GoalDeadline({ goal, plan }) {
+  const by = shortDate(goal.targetDate);
+  if (plan.status === 'passed') return <div className="goal-deadline behind"><CalendarClock size={16} aria-hidden="true"/><p>The target date, {by}, has passed with {money(plan.remaining, true)} to go. Edit the goal to set a new date.</p></div>;
+  const pace = { ahead: 'You’re on track at your current pace.', behind: plan.late ? `At your current pace you’d be about ${plan.late} ${plan.late === 1 ? 'month' : 'months'} late.` : 'Your current pace won’t get there in time.', unknown: '' }[plan.pace];
+  return <div className={`goal-deadline ${plan.pace}`}><CalendarClock size={16} aria-hidden="true"/>
+    <p>To reach it by <strong>{by}</strong>, save <strong>{money(plan.perMonth, true)} a month</strong> for the next {plan.months} {plan.months === 1 ? 'month' : 'months'}.{pace && <small>{pace}</small>}</p></div>;
 }
 
 function GoalProgress({ goal, totals, entries }) {
@@ -90,6 +152,7 @@ export function Dashboard({ state, totals, me, open, navigate }) {
       <div className="banner-copy"><LiveClock/><h2>{name ? `Welcome back, ${name}.` : 'Welcome back, you two.'}</h2><p>See where your money goes and how close you are to your shared goals.</p><button className="btn primary" onClick={() => open({ kind: 'entry' })}><Plus size={17}/> Add an entry</button></div>
       <div className="banner-plants"><PlantPair/></div>
     </section>
+    <BudgetHeadsUp warnings={budgetWarnings(state, totals.spentByCategory, localDate())} navigate={navigate}/>
     <div className="stats-grid">
       {/* Signed in, income is the signed-in person's own; otherwise both profiles combined. */}
       {name ? <Stat icon={ArrowDownLeft} tone="mint" label="Your income" value={totals.people[me].income} caption={`This month · ${name} only`}/>
@@ -119,8 +182,8 @@ export function Dashboard({ state, totals, me, open, navigate }) {
 }
 
 export function Budget({ state, totals, month, save, open, edit, remove }) {
-  const [profile, setProfile] = useState('all');
-  const entries = state.entries.filter(entry => entry.date.startsWith(month + '-') && (profile === 'all' || entry.personId === profile));
+  const [filters, setFilters] = useState(EMPTY_FILTERS);
+  const entries = filterEntries(state, filters, month);
   return <>
     <div className="stats-grid">
       <Stat icon={Landmark} tone="indigo" label="Monthly budget" value={totals.budgeted} caption="Across all spending categories"/>
@@ -134,7 +197,8 @@ export function Budget({ state, totals, month, save, open, edit, remove }) {
         {state.categories.map(category => {
           const spent = totals.spentByCategory.get(category.id) ?? 0;
           const permanent = isPermanentCategory(category.id);
-          return <div className="category-row" key={category.id}>
+          const level = warningLevel(spent, category.limit);
+          return <div className={level ? `category-row ${level}` : 'category-row'} key={category.id}>
             <CategoryIcon category={category} size={18}/>
             <div className="category-name">
               {permanent ? <span className="rename"><strong>{category.name}</strong><LockKeyhole size={13} aria-label="Permanent category"/></span>
@@ -145,7 +209,8 @@ export function Budget({ state, totals, month, save, open, edit, remove }) {
               <div className="category-rates"><span>Savings: {PEOPLE.map(person => `${person.name} ${(category.savingsRates?.[person.id] ?? 0) / 100}%`).join(' · ')}</span>
                 {category.incomeShares && <span>Income share: {PEOPLE.map(person => `${person.name} ${(category.incomeShares[person.id] ?? 0) / 100}%`).join(' · ')}</span>}</div>
             </div>
-            <div className="category-meter"><Progress value={spent} max={category.limit} color={spent <= category.limit ? categoryColor(category) : undefined} tone="rose" label={category.name + ' spent'}/></div>
+            <div className="category-meter"><Progress value={spent} max={category.limit} color={level === 'warn' ? WARN_COLOR : spent <= category.limit ? categoryColor(category) : undefined} tone="rose" label={category.name + ' spent'}/>
+              {level && <WarningBadge level={level} spent={spent} limit={category.limit}/>}</div>
             <div className="category-figures"><strong className={spent > category.limit ? 'negative' : ''}>{money(spent)}</strong><span> / {money(category.limit)}</span>{totals.fundedByCategory.has(category.id) && <small className="set-aside">{money(totals.fundedByCategory.get(category.id))} set aside</small>}</div>
             <div className="category-actions">
               <button className="icon-btn bordered" aria-label={`Edit ${category.name} budget limit`} title="Edit budget limit" onClick={() => open({ kind: 'limit', item: category })}><Pencil size={14}/></button>
@@ -165,8 +230,8 @@ export function Budget({ state, totals, month, save, open, edit, remove }) {
       })}
     </div>
     <section className="card">
-      <PanelHeading title="Entry history" subtitle="Income and expenses logged for this month"
-        action={<select aria-label="Filter budget history by profile" value={profile} onChange={e => setProfile(e.target.value)}><option value="all">Both profiles</option>{PEOPLE.map(person => <option key={person.id} value={person.id}>{person.name}</option>)}</select>}/>
+      <PanelHeading title="Entry history" subtitle="Search and filter your income and expenses."/>
+      <TransactionFilters state={state} filters={filters} setFilters={setFilters} month={month} entries={entries}/>
       <EntryHistory state={state} entries={entries} onEdit={edit} onDelete={remove}/>
     </section>
   </>;

@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { CalendarDays, ChevronLeft, ChevronRight, CircleAlert, CircleCheck, HandCoins, LayoutGrid, PiggyBank, Plus, Scale, Settings as SettingsIcon, Sprout, Wallet } from 'lucide-react';
+import { BarChart3, CalendarDays, ChevronLeft, ChevronRight, CircleAlert, CircleCheck, HandCoins, LayoutGrid, PiggyBank, Plus, Scale, Settings as SettingsIcon, Sprout, Wallet } from 'lucide-react';
 import { Budget, Dashboard, MonthSelector, Savings } from './finance.jsx';
 import { CalendarView } from './calendar.jsx';
 import { MySavings } from './my-savings.jsx';
+import { Insights } from './insights-page.jsx';
 import { personalSavings } from './personal-savings.js';
 import { DebtTracker } from './debts.jsx';
 import { Dialogs } from './dialogs.jsx';
@@ -23,6 +24,7 @@ import './style.css';
 const views = [
   { id: 'dashboard', name: 'Dashboard', icon: LayoutGrid, subtitle: 'Your finances and plans, together in one place.' },
   { id: 'budget', name: 'Budget', icon: Wallet, subtitle: 'Track income, spending and savings for each of you.' },
+  { id: 'insights', name: 'Insights', icon: BarChart3, subtitle: 'Where your money went, how it compares, and a recap to look back on.' },
   { id: 'calendar', name: 'Calendar', icon: CalendarDays, subtitle: 'See your events, budget entries, deposits and debt payments.' },
   { id: 'savings', name: 'Joint Savings', icon: PiggyBank, subtitle: 'See what each of you has put toward your shared goals.' },
   { id: 'my-savings', name: 'My Savings', icon: HandCoins, subtitle: 'Your own savings: money you add or take out, plus what you save from income.' },
@@ -244,6 +246,7 @@ function App() {
         {active === 'budget' && <Budget {...{ state, totals, month, save, edit, remove }} open={setModal}/>}
         {active === 'calendar' && <CalendarView state={state} open={setModal} month={calendarMonth} setMonth={setCalendarMonth} selected={selectedDay} setSelected={setSelectedDay}/>}
         {active === 'savings' && <Savings {...{ state, totals, edit, remove }} open={setModal}/>}
+        {active === 'insights' && <Insights state={state}/>}
         {active === 'my-savings' && <MySavings state={state} me={session.me} open={setModal} editEntry={edit}/>}
         {active === 'debts' && <DebtTracker debts={state.debts} open={setModal}/>}
         {active === 'settings' && <>{cloudOn && <AccountCard session={session} signOut={signOut}/>}<ProfilePictureCard me={session.me} avatars={avatars} setAvatar={setAvatar} notify={message => setNotice({ message })}/><Settings key={state.accentColor} accent={state.accentColor} save={save}/><TreeSettings key={state.tree.kind + state.tree.perMeter} tree={state.tree} save={save}/><ExportCard onExport={() => exportExcel(state, totals)}/><VersionCard/></>}

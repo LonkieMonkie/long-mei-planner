@@ -152,10 +152,17 @@ export function entryFromFields(fields, state, previous, now = new Date().toISOS
   if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time)) throw new Error('Choose a valid transaction time.');
   const allocation = type === 'expense' ? savingsRule(category, person.id, state.goals, previous) : {};
   const splits = type === 'income' ? incomeSplits(fields.splits, amount, state) : [];
+  // A shared expense records the other person's share; withSharedDebt turns it into a debt.
+  let shared = null;
+  if (type === 'expense' && fields.sharedRate !== undefined && fields.sharedRate !== '') {
+    const rate = Number(fields.sharedRate);
+    if (!Number.isInteger(rate) || rate < 1 || rate > 10_000) throw new Error('Enter the other person’s share as a percentage from 1 to 100.');
+    shared = { personId: PEOPLE.find(p => p.id !== person.id).id, rate };
+  }
   return {
     id: previous?.id ?? crypto.randomUUID(),
     personId: person.id, type, categoryId: type === 'expense' ? category.id : '',
-    source, date: fields.date, time, amount, ...allocation, ...(splits.length ? { splits } : {}),
+    source, date: fields.date, time, amount, ...allocation, ...(splits.length ? { splits } : {}), ...(shared ? { shared } : {}),
     createdAt: previous?.createdAt ?? now, editedAt: previous ? now : null,
   };
 }
@@ -249,6 +256,27 @@ export function calendarItems(state, dates) {
   return byDate;
 }
 
+export const sharedAmount = entry => entry.shared ? Math.round(entry.amount * entry.shared.rate / 10_000) : 0;
+
+// Keeps the debt that a shared expense creates in step with the expense. An open debt is
+// replaced or removed; one that was already settled is left as the record of that payment.
+export function withSharedDebt(state, entry, now = new Date().toISOString()) {
+  const settled = state.debts.some(debt => debt.linkedEntryId === entry.id && debt.settledAt);
+  const debts = state.debts.filter(debt => debt.linkedEntryId !== entry.id || debt.settledAt);
+  if (entry.shared && !settled && sharedAmount(entry) > 0) {
+    const existing = state.debts.find(debt => debt.linkedEntryId === entry.id);
+    debts.unshift({ id: existing?.id ?? 'split-' + entry.id, debtorId: entry.shared.personId, creditorId: entry.personId, addedBy: entry.personId,
+      amount: sharedAmount(entry), description: `${entry.source}: ${entry.shared.rate / 100}% share`, createdAt: existing?.createdAt ?? now, settledAt: null, linkedEntryId: entry.id });
+  }
+  return { ...state, debts };
+}
+
+export const withoutEntry = (state, id) => ({
+  ...state,
+  entries: state.entries.filter(entry => entry.id !== id),
+  debts: state.debts.filter(debt => debt.linkedEntryId !== id || debt.settledAt),
+});
+
 export function debtFromFields(fields, now = new Date().toISOString()) {
   const { debtorId, creditorId, addedBy } = fields;
   if (debtorId === creditorId || ![debtorId, creditorId, addedBy].every(id => PEOPLE.some(person => person.id === id))) {
@@ -333,6 +361,7 @@ export function readState(storage) {
   delete state.firstPaydays;
   state.events = state.events.map(normalizeEvent);
   state.eventCategories = normalizeEventCategories(state.eventCategories);
+  for (const goal of state.goals) if (goal.targetDate !== undefined && !isDateKey(goal.targetDate)) delete goal.targetDate;
   for (const category of state.categories) {
     const shares = Object.fromEntries(PEOPLE.map(({ id }) => [id, category.incomeShares?.[id]]).filter(([, rate]) => Number.isInteger(rate) && rate > 0 && rate <= 10_000));
     if (Object.keys(shares).length) category.incomeShares = shares; else delete category.incomeShares;

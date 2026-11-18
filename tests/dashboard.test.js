@@ -385,3 +385,91 @@ test('event categories validate names, color their events, and deleting one keep
   assert.deepEqual(read.eventCategories.map(category => category.name), ['Date nights']);
   assert.deepEqual(readState({ getItem: () => JSON.stringify({ ...freshData(), eventCategories: undefined }) }).eventCategories, []);
 });
+
+test('insights summarize a period, compare it with the one before, and build a monthly trend', async () => {
+  const { monthlyTrend, periodRange, periodSummary, shiftMonth } = await import('../src/insights.js');
+  assert.equal(shiftMonth('2026-01', -1), '2025-12');
+  assert.deepEqual(periodRange('2026-02'), { from: '2026-02-01', to: '2026-02-28', label: 'February 2026', previous: '2026-01', kind: 'month' });
+  assert.equal(periodRange('2026').previous, '2025');
+  const state = freshData();
+  state.entries = [
+    entryFromFields(fields({ type: 'income', amount: '1000', date: '2026-11-03', splits: JSON.stringify([{ categoryId: 'my-savings', rate: 1000 }]) }), state),
+    entryFromFields(fields({ categoryId: 'dining', amount: '60', date: '2026-11-04' }), state),
+    entryFromFields(fields({ categoryId: 'dining', amount: '40', date: '2026-11-04' }), state),
+    entryFromFields(fields({ categoryId: 'bills', amount: '150', date: '2026-11-20' }), state),
+    entryFromFields(fields({ categoryId: 'bills', amount: '90', date: '2026-10-20' }), state),
+    entryFromFields(fields({ categoryId: 'wedding', amount: '500', date: '2026-11-21' }), state),
+  ];
+  const nov = periodSummary(state, '2026-11');
+  // The Wedding deposit is saved, not spent.
+  assert.deepEqual([nov.income, nov.spent, nov.net, nov.toMySavings, nov.toGoals, nov.count], [100_000, 25_000, 75_000, 10_000, 50_000, 5]);
+  assert.deepEqual(nov.categories.map(row => [row.category.id, row.spent]), [['bills', 15_000], ['dining', 10_000]]);
+  assert.equal(nov.biggest.amount, 15_000);
+  assert.deepEqual(nov.busiestDay, { date: '2026-11-20', amount: 15_000 });
+  assert.equal(periodSummary(state, '2026').spent, 34_000);
+  assert.deepEqual(monthlyTrend(state, '2026-11', 3).map(row => [row.month, row.income, row.spent]), [['2026-09', 0, 0], ['2026-10', 0, 9_000], ['2026-11', 100_000, 25_000]]);
+});
+
+test('budget warnings flag categories at 80% or over with money left and days to go', async () => {
+  const { budgetWarnings, warningLevel } = await import('../src/insights.js');
+  const state = freshData();
+  state.categories = state.categories.map(category => ({ ...category, limit: { dining: 20_000, bills: 10_000, essentials: 50_000 }[category.id] ?? category.limit }));
+  const spent = new Map([['dining', 16_000], ['bills', 12_500], ['essentials', 10_000]]);
+  const warnings = budgetWarnings(state, spent, '2026-11-19');
+  assert.deepEqual(warnings.map(row => [row.category.id, row.level, row.left, row.daysLeft]), [['bills', 'over', -2_500, 12], ['dining', 'warn', 4_000, 12]]);
+  assert.deepEqual([warningLevel(7_999, 10_000), warningLevel(8_000, 10_000), warningLevel(10_001, 10_000), warningLevel(5, 0)], [null, 'warn', 'over', null]);
+});
+
+test('entry filters combine text, type, category, person, amount and date range', async () => {
+  const { EMPTY_FILTERS, filterEntries } = await import('../src/insights.js');
+  const state = freshData();
+  state.entries = [
+    entryFromFields(fields({ type: 'income', source: 'Paycheck', amount: '1200', date: '2026-11-03', personId: 'mei' }), state),
+    entryFromFields(fields({ categoryId: 'dining', amount: '45.50', date: '2026-11-04' }), state),
+    entryFromFields(fields({ categoryId: 'bills', amount: '150', date: '2026-10-20' }), state),
+  ];
+  const run = change => filterEntries(state, { ...EMPTY_FILTERS, ...change }, '2026-11').map(entry => entry.source);
+  assert.deepEqual(run({}), ['Paycheck', 'Dining out']);
+  assert.deepEqual(run({ range: 'all' }), ['Paycheck', 'Dining out', 'Bills & subscriptions']);
+  assert.deepEqual(run({ range: 'all', text: 'MEI' }), ['Paycheck']);
+  assert.deepEqual(run({ text: '45.50' }), ['Dining out']);
+  assert.deepEqual(run({ range: 'all', type: 'expense', min: '100' }), ['Bills & subscriptions']);
+  assert.deepEqual(run({ range: 'custom', from: '2026-10-01', to: '2026-10-31' }), ['Bills & subscriptions']);
+  assert.deepEqual(run({ categoryId: 'dining', personId: 'long' }), ['Dining out']);
+  assert.deepEqual(run({ max: 'abc' }), ['Paycheck', 'Dining out']);
+});
+
+test('a shared expense creates a debt that follows edits and deletes, but keeps a settled one', async () => {
+  const { withSharedDebt, withoutEntry, sharedAmount, settleDebt } = await import('../src/model.js');
+  let state = freshData();
+  const entry = entryFromFields(fields({ categoryId: 'dining', amount: '80.01', personId: 'long', sharedRate: '5000' }), state);
+  assert.deepEqual(entry.shared, { personId: 'mei', rate: 5000 });
+  assert.equal(sharedAmount(entry), 4001);
+  assert.throws(() => entryFromFields(fields({ categoryId: 'dining', sharedRate: '0' }), state), /share/);
+  state = withSharedDebt({ ...state, entries: [entry] }, entry);
+  assert.deepEqual(state.debts.map(debt => [debt.debtorId, debt.creditorId, debt.amount, debt.linkedEntryId]), [['mei', 'long', 4001, entry.id]]);
+  const edited = entryFromFields(fields({ categoryId: 'dining', amount: '100', personId: 'long', sharedRate: '4000' }), state, entry);
+  state = withSharedDebt({ ...state, entries: [edited] }, edited);
+  assert.deepEqual(state.debts.map(debt => debt.amount), [4000]);
+  const unshared = entryFromFields(fields({ categoryId: 'dining', amount: '100', personId: 'long' }), state, edited);
+  assert.equal(withSharedDebt(state, unshared).debts.length, 0);
+  assert.equal(withoutEntry(state, entry.id).debts.length, 0);
+  const settled = settleDebt(state, state.debts[0].id);
+  assert.equal(withSharedDebt(settled, edited).debts.filter(debt => !debt.settledAt).length, 0);
+  assert.equal(withoutEntry(settled, entry.id).debts.length, 1);
+  // The whole expense still counts as the payer's spending in its category.
+  assert.equal(summarize({ ...state, entries: [edited] }).spentByCategory.get('dining'), 10_000);
+});
+
+test('goal target dates give the monthly amount needed and whether the pace is on time', async () => {
+  const { goalPlan } = await import('../src/insights.js');
+  const goal = { id: 'wedding', target: 3_000_000, targetDate: '2027-11-18' };
+  const plan = goalPlan(goal, 600_000, { status: 'on-track', date: '2027-06-01' }, '2026-11-18');
+  assert.deepEqual([plan.status, plan.months, plan.perMonth, plan.pace], ['open', 12, 200_200, 'ahead']);
+  assert.deepEqual([goalPlan(goal, 600_000, { status: 'on-track', date: '2028-03-01' }, '2026-11-18').pace, goalPlan(goal, 600_000, { status: 'on-track', date: '2028-03-01' }, '2026-11-18').late], ['behind', 3]);
+  assert.equal(goalPlan(goal, 3_000_000, { status: 'reached' }, '2026-11-18').status, 'reached');
+  assert.equal(goalPlan(goal, 0, { status: 'no-data' }, '2027-12-01').status, 'passed');
+  assert.equal(goalPlan({ ...goal, targetDate: undefined }, 0, {}, '2026-11-18'), null);
+  const read = readState({ getItem: () => JSON.stringify({ ...freshData(), goals: [{ id: 'wedding', name: 'Wedding', target: 1, targetDate: 'soon' }] }) });
+  assert.equal('targetDate' in read.goals[0], false);
+});

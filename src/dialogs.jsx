@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ArrowDownLeft, ArrowUpRight, Pencil, PiggyBank, Plus, Trash2 } from 'lucide-react';
-import { PEOPLE, PERSONAL_CATEGORY_ID, SAVINGS_CATEGORY_ID, WEDDING_CATEGORY_ID, categoryColor, dateFromKey, contribution, debtFromFields, decimalUnits, entryContribution, entryFromFields, incomeSplits, entryTime, localDate, localTime, money, shortDate, savingsRule, setJointBalance, settleDebt } from './model.js';
+import { isDateKey, withSharedDebt, withoutEntry, PEOPLE, PERSONAL_CATEGORY_ID, SAVINGS_CATEGORY_ID, WEDDING_CATEGORY_ID, categoryColor, dateFromKey, contribution, debtFromFields, decimalUnits, entryContribution, entryFromFields, incomeSplits, entryTime, localDate, localTime, money, shortDate, savingsRule, setJointBalance, settleDebt } from './model.js';
 import { ActionForm, ErrorBoundary, Modal } from './ui.jsx';
 import { CategoryForm } from './category-form.jsx';
 import { EVENT_COLORS, REPEATS, deleteEvent, deleteEventCategory, editEvent, eventCategoryFromFields, eventFromFields, occurrenceIndex } from './events.js';
@@ -15,6 +15,8 @@ function EntryForm({ state, item, date, person, me, weddingDeposit = false, clos
   const { rate, goalId } = savingsRule(category, personId, state.goals, item);
   const [initialTime] = useState(() => item ? entryTime(item) : localTime());
   const [shares, setShares] = useState(() => initialShares(state, personId, item));
+  const [shared, setShared] = useState(Boolean(item?.shared));
+  const [sharePct, setSharePct] = useState(item?.shared ? String(item.shared.rate / 100) : '50');
   let units = 0, projected = 0;
   try { units = decimalUnits(amount || '0'); projected = contribution(units, rate); } catch { /* Invalid amounts are reported on submit. */ }
   function choosePerson(id) {
@@ -27,6 +29,12 @@ function EntryForm({ state, item, date, person, me, weddingDeposit = false, clos
       rates = shareRates(state, shares);
       fields = { ...fields, splits: JSON.stringify(state.categories.filter(c => shares[c.id]?.on && c.id !== PERSONAL_CATEGORY_ID).map(c => ({ categoryId: c.id, rate: rates[c.id] }))) };
     }
+    if (type === 'expense' && shared && !weddingDeposit) {
+      let rate;
+      try { rate = decimalUnits(sharePct || '0', 10_000); } catch { throw new Error('Enter their share as a percentage from 1 to 100, with up to two decimals.'); }
+      if (rate < 1) throw new Error('Enter their share as a percentage from 1 to 100.');
+      fields = { ...fields, sharedRate: String(rate) };
+    }
     save(current => {
       if (item && !current.entries.some(entry => entry.id === item.id && entry.editedAt === item.editedAt)) {
         throw new Error('This entry was changed or deleted on another device. Close the form and open it again.');
@@ -35,7 +43,8 @@ function EntryForm({ state, item, date, person, me, weddingDeposit = false, clos
       // The percentages shown become this person's saved shares, ticked or not.
       if (type === 'income') current = { ...current, categories: current.categories.map(c => c.id in rates && rates[c.id] !== (c.incomeShares?.[entry.personId] ?? 0)
         ? { ...c, incomeShares: { ...c.incomeShares, [entry.personId]: rates[c.id] } } : c) };
-      return { ...current, entries: item ? current.entries.map(row => row.id === entry.id ? entry : row) : [entry, ...current.entries] };
+      const next = { ...current, entries: item ? current.entries.map(row => row.id === entry.id ? entry : row) : [entry, ...current.entries] };
+      return entry.shared || item?.shared ? withSharedDebt(next, entry) : next;
     }, item ? 'Entry updated' : 'Entry saved');
     close();
   }
@@ -61,9 +70,33 @@ function EntryForm({ state, item, date, person, me, weddingDeposit = false, clos
     {type === 'expense' && category && <div className="contribution-preview"><PiggyBank size={19}/><span>
       {PEOPLE.find(p => p.id === personId).name}’s category rate · {rate / 100}%{goalId && ' to ' + state.goals.find(g => g.id === goalId)?.name}
     </span><strong>{money(projected)}</strong></div>}
+    {type === 'expense' && !weddingDeposit && <SharedExpense {...{ shared, setShared, sharePct, setSharePct, units, item, debts: state.debts }}
+      payer={PEOPLE.find(p => p.id === personId)} other={PEOPLE.find(p => p.id !== personId)}/>}
     {type === 'income' && <IncomeSplit state={state} shares={shares} setShares={setShares} units={units} person={PEOPLE.find(p => p.id === personId)}/>}
     {type === 'income' && item?.type === 'income' && !item.splits && entryContribution(item) > 0 && <p className="field-help">Saving this as income will reverse its previous {money(entryContribution(item))} savings contribution.</p>}
   </ActionForm>;
+}
+
+// Splitting an expense: the payer keeps the whole expense in the budget, and the other
+// person's share is logged as a debt they owe the payer.
+function SharedExpense({ shared, setShared, sharePct, setSharePct, units, payer, other, item, debts }) {
+  let rate = null;
+  try { rate = decimalUnits(sharePct || '0', 10_000); } catch { /* Shown as invalid below. */ }
+  const owed = rate ? Math.round(units * rate / 10_000) : 0;
+  const settled = item && debts.some(debt => debt.linkedEntryId === item.id && debt.settledAt);
+  return <fieldset className="shared-expense">
+    <label className="check-row"><input type="checkbox" checked={shared} onChange={e => setShared(e.target.checked)}/>Shared with {other.name}</label>
+    {shared && <>
+      <div className="share-presets" role="group" aria-label={`${other.name}’s share`}>
+        {['50', '40', '60', '100'].map(value => <button type="button" key={value} className="filter-chip share-chip" aria-pressed={sharePct === value} onClick={() => setSharePct(value)}>
+          {value === '50' ? 'Even split' : value === '100' ? `All ${other.name}’s` : `${payer.name} ${100 - Number(value)} · ${other.name} ${value}`}</button>)}
+        <label className="split-pct">{other.name}’s share<input type="number" min="1" max="100" step="0.01" inputMode="decimal" value={sharePct} aria-invalid={rate === null || rate < 1} onChange={e => setSharePct(e.target.value)}/>%</label>
+      </div>
+      <p className={rate === null || rate < 1 ? 'split-total over' : 'split-total done'}>{rate === null || rate < 1 ? 'Enter a share from 1 to 100.'
+        : <><strong>{other.name}</strong> owes <strong>{payer.name}</strong> <strong>{money(owed)}</strong>. It’s added to the Debt Tracker.</>}</p>
+      {settled && <p className="field-help">This share was already settled, so changing it here won’t create a new debt.</p>}
+    </>}
+  </fieldset>;
 }
 
 // What the income form shows for each category: ticked and the percentage. An entry being
@@ -189,9 +222,13 @@ export function Dialogs({ modal, state, totals, me, close, save, onEventSaved })
         const name = titleValue(fields.name, 'goal name');
         const target = decimalUnits(fields.target);
         if (!target) throw new Error('Enter a target greater than $0.');
-        const goal = { id: item?.id ?? crypto.randomUUID(), name, target };
+        if (fields.targetDate && !isDateKey(fields.targetDate)) throw new Error('Choose a valid target date.');
+        if (fields.targetDate && fields.targetDate <= localDate() && fields.targetDate !== item?.targetDate) throw new Error('Choose a target date after today.');
+        const goal = { id: item?.id ?? crypto.randomUUID(), name, target, ...(fields.targetDate ? { targetDate: fields.targetDate } : {}) };
         done(current => ({ ...current, goals: item ? current.goals.map(g => g.id === goal.id ? goal : g) : [...current.goals, goal] }), 'Savings goal saved');
-      }}><label>Goal name<input name="name" defaultValue={item?.name} placeholder="e.g. Wedding" maxLength={70} required autoFocus/></label><label>Target ($)<input name="target" type="number" min="0.01" max="1000000000" step="0.01" defaultValue={item ? item.target / 100 : ''} required/></label></ActionForm>;
+      }}><label>Goal name<input name="name" defaultValue={item?.name} placeholder="e.g. Wedding" maxLength={70} required autoFocus/></label><label>Target ($)<input name="target" type="number" min="0.01" max="1000000000" step="0.01" defaultValue={item ? item.target / 100 : ''} required/></label>
+        <label>Target date (optional)<input name="targetDate" type="date" defaultValue={item?.targetDate} min={localDate()}/></label>
+        <p className="field-help">With a date, the goal shows how much to save each month to get there in time.</p></ActionForm>;
       break;
     case 'event':
       content = <EventForm date={modal.date} item={item} categories={state.eventCategories} close={close} done={done} onEventSaved={onEventSaved}/>;
@@ -212,8 +249,8 @@ export function Dialogs({ modal, state, totals, me, close, save, onEventSaved })
       break;
     case 'delete-entry':
       content = <ActionForm cancel={close} label="Delete entry" onSave={() => {
-        done(current => ({ ...current, entries: current.entries.filter(entry => entry.id !== item.id) }), 'Entry deleted. Totals updated.');
-      }}><p className="field-help">{`Delete the ${item.source} entry for ${money(item.amount)}?${entryContribution(item) ? ' Its ' + money(entryContribution(item)) + ' joint contribution will be reversed.' : ''}`}</p></ActionForm>;
+        done(current => withoutEntry(current, item.id), 'Entry deleted. Totals updated.');
+      }}><p className="field-help">{`Delete the ${item.source} entry for ${money(item.amount)}?${entryContribution(item) ? ' Its ' + money(entryContribution(item)) + ' joint contribution will be reversed.' : ''}${item.shared && state.debts.some(debt => debt.linkedEntryId === item.id && !debt.settledAt) ? ' The open debt for the shared part will be removed too.' : ''}`}</p></ActionForm>;
       break;
   }
   return <Modal title={titles[kind]} close={close}><ErrorBoundary onClose={close}>{content}</ErrorBoundary></Modal>;
