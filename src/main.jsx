@@ -68,7 +68,7 @@ function exportExcel(state, totals) {
         row.kind === 'income' ? 'Saved from income' : row.amount < 0 ? 'Taken out' : 'Added', row.note, row.amount / 100])),
     ] },
     { name: 'Events', rows: [
-      ['Title', 'Date', 'Time', 'Repeats', 'Description'], ...state.events.map(event => [event.title, event.date, event.time, repeatSummary(event), event.description]),
+      ['Title', 'Category', 'Date', 'Time', 'Repeats', 'Description'], ...state.events.map(event => [event.title, state.eventCategories.find(category => category.id === event.categoryId)?.name ?? '', event.date, event.time, repeatSummary(event), event.description]),
     ] },
     { name: 'Debts', rows: [
       ['Description', 'Owed by', 'Owed to', 'Amount (USD)', 'Logged by', 'Logged at', 'Settled at'],

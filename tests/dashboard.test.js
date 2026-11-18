@@ -365,3 +365,23 @@ test('events keep a valid color and drop anything else', async () => {
   state.events = [{ id: 'a', title: 'Dinner', date: '2026-12-01', color: '#5a9ccc' }];
   assert.equal(calendarItems(state, ['2026-12-01']).get('2026-12-01')[0].color, '#5a9ccc');
 });
+
+test('event categories validate names, color their events, and deleting one keeps the events', async () => {
+  const { deleteEventCategory, eventCategoryFromFields, eventFromFields } = await import('../src/events.js');
+  const dates = eventCategoryFromFields({ name: ' Date nights ', color: '#E0718B' }, []);
+  assert.deepEqual([dates.name, dates.color], ['Date nights', '#e0718b']);
+  assert.throws(() => eventCategoryFromFields({ name: 'date NIGHTS', color: '#000000' }, [dates]), /already/);
+  assert.throws(() => eventCategoryFromFields({ name: '', color: '#000000' }, []), /name/);
+  assert.equal(eventCategoryFromFields({ name: 'Date nights', color: '#111111' }, [dates], dates).id, dates.id);
+  const state = freshData();
+  state.eventCategories = [dates];
+  state.events = [eventFromFields({ title: 'Dinner', date: '2026-12-01', categoryId: dates.id }, 'a'), eventFromFields({ title: 'Movie', date: '2026-12-01', categoryId: dates.id, color: '#5a9ccc' }, 'b')];
+  const items = calendarItems(state, ['2026-12-01']).get('2026-12-01');
+  assert.deepEqual(items.map(item => [item.color, item.category]), [['#e0718b', 'Date nights'], ['#5a9ccc', 'Date nights']]);
+  const after = deleteEventCategory(state, dates.id);
+  assert.equal(after.eventCategories.length, 0);
+  assert.deepEqual(after.events.map(event => 'categoryId' in event), [false, false]);
+  const read = readState({ getItem: () => JSON.stringify({ ...state, eventCategories: [dates, { id: 'x', name: 'Bad', color: 'red' }] }) });
+  assert.deepEqual(read.eventCategories.map(category => category.name), ['Date nights']);
+  assert.deepEqual(readState({ getItem: () => JSON.stringify({ ...freshData(), eventCategories: undefined }) }).eventCategories, []);
+});

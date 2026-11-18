@@ -1,7 +1,8 @@
-import { ArrowDownLeft, ArrowUpRight, CalendarDays, ChevronLeft, ChevronRight, Clock3, Pencil, PiggyBank, Plus, ReceiptText, Repeat, Trash2, Wallet } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, CalendarDays, ChevronLeft, ChevronRight, Clock3, Pencil, PiggyBank, Plus, ReceiptText, Repeat, Settings2, Tag, Trash2, Wallet } from 'lucide-react';
 import { PEOPLE, calendarDays, calendarItems, dateFromKey, displayTime, localDate, money, shiftMonth, shortDate } from './model.js';
 import { Empty, PanelHeading } from './ui.jsx';
 import { repeatSummary } from './events.js';
+import { useState } from 'react';
 
 const styles = {
   income: { tone: 'mint', label: 'Income', Icon: ArrowDownLeft },
@@ -33,6 +34,7 @@ function AgendaDetails({ item, label }) {
     <p className="event-time"><Clock3 size={13} aria-hidden="true"/>{time ? displayTime(time) : 'All day'}</p>
     {details && <p className="event-time">{details}</p>}
     {event?.repeat && <p className="event-time"><Repeat size={13} aria-hidden="true"/>{repeatSummary(event)}</p>}
+    {item.category && <p className="event-time"><Tag size={13} aria-hidden="true"/>{item.category}</p>}
     {event?.description && <p className="event-description">{event.description}</p>}
   </>;
 }
@@ -52,11 +54,30 @@ function AgendaItem({ item, open }) {
   </article>;
 }
 
+// Which event categories are hidden is remembered on this device only.
+const HIDDEN_KEY = 'our-little-life.calendar-hidden';
+const NONE = 'none';
+function readHidden() {
+  try { const saved = JSON.parse(localStorage.getItem(HIDDEN_KEY) ?? '[]'); return Array.isArray(saved) ? saved.filter(key => typeof key === 'string') : []; } catch { return []; }
+}
+const categoryKey = (event, state) => state.eventCategories.some(category => category.id === event.categoryId) ? event.categoryId : NONE;
+
 export function CalendarView({ state, open, month, setMonth, selected, setSelected }) {
   const today = localDate();
   const days = calendarDays(month);
-  const byDate = calendarItems(state, days);
+  const [hidden, setHidden] = useState(readHidden);
+  const visible = item => item.kind !== 'event' || !hidden.includes(categoryKey(item.event, state));
+  const byDate = new Map([...calendarItems(state, days)].map(([day, items]) => [day, items.filter(visible)]));
   const events = byDate.get(selected) ?? [];
+  function toggle(key) {
+    setHidden(current => {
+      const next = current.includes(key) ? current.filter(item => item !== key) : [...current, key];
+      try { localStorage.setItem(HIDDEN_KEY, JSON.stringify(next)); } catch { /* Not remembered; the filter still works. */ }
+      return next;
+    });
+  }
+  const filters = [...state.eventCategories.map(category => ({ key: category.id, name: category.name, color: category.color })),
+    { key: NONE, name: 'No category', color: null }];
   function move(step) {
     const next = shiftMonth(month, step);
     setMonth(next);
@@ -66,6 +87,15 @@ export function CalendarView({ state, open, month, setMonth, selected, setSelect
     <section className="card calendar-card">
       <PanelHeading title={dateFromKey(month + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
         action={<div className="calendar-controls"><button className="btn secondary small" onClick={() => { setSelected(today); setMonth(today.slice(0, 7)); }}>Today</button><button className="icon-btn bordered" aria-label="Previous month" onClick={() => move(-1)}><ChevronLeft size={17}/></button><button className="icon-btn bordered" aria-label="Next month" onClick={() => move(1)}><ChevronRight size={17}/></button></div>}/>
+      <div className="event-filters" role="group" aria-label="Show events by category">
+        <span className="event-filters-label">Events</span>
+        {filters.map(filter => <button type="button" key={filter.key} className="filter-chip" aria-pressed={!hidden.includes(filter.key)}
+          style={filter.color ? { '--chip-color': filter.color } : undefined} onClick={() => toggle(filter.key)}
+          title={hidden.includes(filter.key) ? `Show ${filter.name} events` : `Hide ${filter.name} events`}>
+          <i aria-hidden="true"/>{filter.name}
+        </button>)}
+        <button type="button" className="filter-manage" onClick={() => open({ kind: 'event-categories' })}><Settings2 size={14}/> {state.eventCategories.length ? 'Edit categories' : 'Add categories'}</button>
+      </div>
       <div className="calendar-grid">
         {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => <span className="calendar-weekday" key={day}>{day}</span>)}
         {days.map(day => {
@@ -81,7 +111,7 @@ export function CalendarView({ state, open, month, setMonth, selected, setSelect
           </button>;
         })}
       </div>
-      <div className="calendar-legend">{Object.values(styles).map(({ tone, label }) => <span key={label}><i className={`day-event ${tone}`}/>{label}{label === 'Expense' && ' · category color'}{label === 'Event' && ' · your color'}</span>)}</div>
+      <div className="calendar-legend">{Object.values(styles).map(({ tone, label }) => <span key={label}><i className={`day-event ${tone}`}/>{label}{label === 'Expense' && ' · category color'}{label === 'Event' && ' · category or own color'}</span>)}</div>
     </section>
     <section className="card agenda-card">
       <PanelHeading title={shortDate(selected)} subtitle="Day’s agenda"/>

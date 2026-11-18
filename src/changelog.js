@@ -1,6 +1,11 @@
 // What changed in each release, newest first. Add an entry and bump "version" in
 // package.json together; a test checks that they match.
 export const CHANGELOG = [
+  { version: '2.11.0', date: '2026-11-17', changes: [
+    'Event categories: create, rename, recolor and delete them from the calendar.',
+    'Show or hide each category’s events with one click above the calendar.',
+    'Events without their own color use their category’s color.',
+  ] },
   { version: '2.10.0', date: '2026-11-17', changes: [
     'Choose a color for each calendar event, from presets or any color you like.',
     'Fixed: expense category colors now show on the calendar again.',

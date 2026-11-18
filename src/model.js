@@ -1,6 +1,6 @@
 import { DEFAULT_ACCENT, LEGACY_ACCENT, parseAccent } from './appearance.js';
 import { DEFAULT_TREE, normalizeTree } from './tree-model.js';
-import { normalizeEvent, occursOn } from './events.js';
+import { normalizeEvent, normalizeEventCategories, occursOn } from './events.js';
 import { isSavingsRecord } from './personal-savings.js';
 
 export const STORAGE_KEY = 'our-little-life.dashboard.v2';
@@ -94,7 +94,7 @@ export function freshData() {
       { ...personalCategory },
     ],
     goals: [{ ...weddingGoal }],
-    entries: [], events: [], debts: [], savings: [],
+    entries: [], events: [], eventCategories: [], debts: [], savings: [],
     savingsAdjustment: 0, accentColor: DEFAULT_ACCENT, theme: 'garden', tree: { ...DEFAULT_TREE },
   };
 }
@@ -236,9 +236,13 @@ export function calendarItems(state, dates) {
     byDate.get(localDate(paidAt))?.push({ id: 'payment:' + debt.id, kind: 'payment',
       title: 'Debt paid: ' + debt.description, debt, time: localTime(paidAt) });
   }
+  const eventCategories = new Map((state.eventCategories ?? []).map(category => [category.id, category]));
   for (const [date, items] of byDate) {
     for (const event of state.events) {
-      if (occursOn(event, date)) items.push({ id: 'event:' + event.id + ':' + date, kind: 'event', title: event.title, time: event.time, event, date, color: event.color });
+      // An event's own color wins over its category's.
+      const category = eventCategories.get(event.categoryId);
+      if (occursOn(event, date)) items.push({ id: 'event:' + event.id + ':' + date, kind: 'event', title: event.title, time: event.time, event, date,
+        color: event.color ?? category?.color, category: category?.name });
     }
   }
   for (const items of byDate.values()) items.sort((a, b) => (a.time ?? '').localeCompare(b.time ?? ''));
@@ -328,6 +332,7 @@ export function readState(storage) {
   // Automatic biweekly paydays were removed; repeating events replace them.
   delete state.firstPaydays;
   state.events = state.events.map(normalizeEvent);
+  state.eventCategories = normalizeEventCategories(state.eventCategories);
   for (const category of state.categories) {
     const shares = Object.fromEntries(PEOPLE.map(({ id }) => [id, category.incomeShares?.[id]]).filter(([, rate]) => Number.isInteger(rate) && rate > 0 && rate <= 10_000));
     if (Object.keys(shares).length) category.incomeShares = shares; else delete category.incomeShares;

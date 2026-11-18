@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { ArrowDownLeft, ArrowUpRight, PiggyBank } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, Pencil, PiggyBank, Plus, Trash2 } from 'lucide-react';
 import { PEOPLE, PERSONAL_CATEGORY_ID, SAVINGS_CATEGORY_ID, WEDDING_CATEGORY_ID, categoryColor, dateFromKey, contribution, debtFromFields, decimalUnits, entryContribution, entryFromFields, incomeSplits, entryTime, localDate, localTime, money, shortDate, savingsRule, setJointBalance, settleDebt } from './model.js';
 import { ActionForm, Modal } from './ui.jsx';
 import { CategoryForm } from './category-form.jsx';
-import { EVENT_COLORS, REPEATS, deleteEvent, editEvent, eventFromFields, occurrenceIndex } from './events.js';
+import { EVENT_COLORS, REPEATS, deleteEvent, deleteEventCategory, editEvent, eventCategoryFromFields, eventFromFields, occurrenceIndex } from './events.js';
 import { savingsFromFields } from './personal-savings.js';
 
 function EntryForm({ state, item, date, person, me, weddingDeposit = false, close, save }) {
@@ -149,7 +149,7 @@ export function Dialogs({ modal, state, totals, me, close, save, onEventSaved })
     'wedding-deposit': 'Add a deposit', saving: item ? 'Edit savings record' : modal.direction === 'out' ? 'Take money out' : 'Add a deposit', 'delete-saving': 'Delete savings record?',
     category: item ? item.name + ' settings' : 'Add a budget category', limit: 'Edit budget limit',
     balance: 'Edit joint balance', goal: item ? 'Edit savings goal' : 'Add a savings goal',
-    event: item ? 'Edit event' : 'Add event', 'delete-event': item?.repeat ? 'Delete repeating event?' : 'Delete event?', 'delete-entry': 'Delete entry?',
+    event: item ? 'Edit event' : 'Add event', 'event-categories': 'Event categories', 'delete-event': item?.repeat ? 'Delete repeating event?' : 'Delete event?', 'delete-entry': 'Delete entry?',
     debt: 'Log a debt', 'settle-debt': 'Confirm payment?',
   };
   const done = (update, message) => { save(update, message); close(); };
@@ -192,7 +192,10 @@ export function Dialogs({ modal, state, totals, me, close, save, onEventSaved })
       }}><label>Goal name<input name="name" defaultValue={item?.name} placeholder="e.g. Wedding" maxLength={70} required autoFocus/></label><label>Target ($)<input name="target" type="number" min="0.01" max="1000000000" step="0.01" defaultValue={item ? item.target / 100 : ''} required/></label></ActionForm>;
       break;
     case 'event':
-      content = <EventForm date={modal.date} item={item} close={close} done={done} onEventSaved={onEventSaved}/>;
+      content = <EventForm date={modal.date} item={item} categories={state.eventCategories} close={close} done={done} onEventSaved={onEventSaved}/>;
+      break;
+    case 'event-categories':
+      content = <EventCategories categories={state.eventCategories} events={state.events} save={save} close={close}/>;
       break;
     case 'debt':
       content = <DebtForm close={close} done={done} me={me}/>;
@@ -234,7 +237,7 @@ function DebtForm({ close, done, me }) {
   </ActionForm>;
 }
 
-function EventForm({ date, item, close, done, onEventSaved }) {
+function EventForm({ date, item, categories, close, done, onEventSaved }) {
   // When editing a repeating event, `date` is the occurrence that was clicked.
   const occurrence = date ?? item?.date ?? localDate();
   const series = Boolean(item?.repeat);
@@ -246,6 +249,8 @@ function EventForm({ date, item, close, done, onEventSaved }) {
   const remaining = item?.repeat?.ends === 'after' ? Math.max(1, item.repeat.count - Math.max(0, occurrenceIndex(item, occurrence))) : 10;
   const [count, setCount] = useState(String(item?.repeat?.count ?? 10));
   const [color, setColor] = useState(item?.color ?? '');
+  const [categoryId, setCategoryId] = useState(categories.some(category => category.id === item?.categoryId) ? item.categoryId : '');
+  const category = categories.find(row => row.id === categoryId);
   const repeating = scope !== 'one';
   const unit = REPEATS.find(rule => rule.id === freq).unit;
   const day = dateFromKey(occurrence).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -255,8 +260,9 @@ function EventForm({ date, item, close, done, onEventSaved }) {
     if (item?.repeat?.ends === 'after') setCount(String(which === 'following' ? remaining : item.repeat.count));
   }
   return <ActionForm cancel={close} label={item ? 'Save changes' : 'Save event'} onSave={fields => {
-    const edited = eventFromFields({ ...fields, color, ...(repeating ? {} : { freq: 'none' }) });
+    const edited = eventFromFields({ ...fields, color, categoryId, ...(repeating ? {} : { freq: 'none' }) });
     done(current => {
+      if (edited.categoryId && !current.eventCategories.some(row => row.id === edited.categoryId)) throw new Error('That category was deleted on another device. Choose another.');
       if (!item) return { ...current, events: [...current.events, edited] };
       const original = current.events.find(event => event.id === item.id);
       if (!original) throw new Error('This event was deleted on another device. Close the form to see the latest calendar.');
@@ -291,10 +297,14 @@ function EventForm({ date, item, close, done, onEventSaved }) {
       </div>}
       {freq !== 'none' && <p className="field-help">Repeats every {unit} from {start ? shortDate(start) : 'the date above'}{ends === 'never' ? ', with no end date' : ''}.{freq === 'monthly' || freq === 'yearly' ? ' Dates past the end of a shorter month move to its last day.' : ''}</p>}
     </>}
+    {categories.length > 0 && <label>Category<select value={categoryId} onChange={e => setCategoryId(e.target.value)}>
+      <option value="">No category</option>{categories.map(row => <option key={row.id} value={row.id}>{row.name}</option>)}
+    </select></label>}
     <fieldset className="event-colors">
-      <legend>Color</legend>
+      <legend>Color{category && !color ? ` (using ${category.name})` : ''}</legend>
       <div className="event-swatches">
-        <button type="button" className="event-swatch default" aria-pressed={!color} aria-label="Default color" title="Default" onClick={() => setColor('')}/>
+        <button type="button" className="event-swatch default" aria-pressed={!color} aria-label={category ? `${category.name} color` : 'Default color'} title={category ? `${category.name} color` : 'Default'}
+          style={category ? { '--swatch-color': category.color } : undefined} onClick={() => setColor('')}/>
         {EVENT_COLORS.map(([name, value]) => <button type="button" key={value} className="event-swatch" style={{ background: value }}
           aria-pressed={color === value} aria-label={name} title={name} onClick={() => setColor(value)}/>)}
         <label className="event-swatch custom" title="Pick any color" style={color && !EVENT_COLORS.some(([, value]) => value === color) ? { background: color } : undefined}>
@@ -361,4 +371,53 @@ function SavingsForm({ state, item, me, destination, direction, person, close, s
     {where === 'personal' && <label>Note (optional)<input name="note" maxLength={100} defaultValue={item?.note} placeholder={way === 'out' ? 'e.g. New laptop' : 'e.g. Birthday money'}/></label>}
     {where === 'wedding' && <p className="field-help">This logs a Wedding budget entry and adds the amount to Joint Savings.</p>}
   </ActionForm>;
+}
+
+const randomColor = () => EVENT_COLORS[Math.floor(Math.random() * EVENT_COLORS.length)][1];
+
+function EventCategories({ categories, events, save, close }) {
+  const [editing, setEditing] = useState(null);
+  const [deleting, setDeleting] = useState(null);
+  const [error, setError] = useState('');
+  const [newColor, setNewColor] = useState(randomColor);
+  const attempt = task => { setError(''); try { task(); } catch (e) { setError(e.message); } };
+  const counts = new Map(categories.map(category => [category.id, events.filter(event => event.categoryId === category.id).length]));
+  return <div className="form-stack">
+    <p className="field-help">Group events so you can show or hide them with one click on the calendar.</p>
+    {categories.length > 0 && <div className="event-category-list">{categories.map(category => editing === category.id
+      ? <form key={category.id} className="event-category-row editing" onSubmit={event => {
+          event.preventDefault();
+          const fields = Object.fromEntries(new FormData(event.currentTarget));
+          attempt(() => { save(current => ({ ...current, eventCategories: current.eventCategories.map(row => row.id === category.id ? eventCategoryFromFields(fields, current.eventCategories, row) : row) }), 'Category updated'); setEditing(null); });
+        }}>
+          <input type="color" name="color" defaultValue={category.color} aria-label={`${category.name} color`} className="category-color-input"/>
+          <input name="name" defaultValue={category.name} maxLength={40} aria-label="Category name" required autoFocus/>
+          <button className="btn primary small">Save</button>
+          <button type="button" className="btn secondary small" onClick={() => setEditing(null)}>Cancel</button>
+        </form>
+      : deleting === category.id
+        ? <div key={category.id} className="event-category-row confirm" role="alert">
+          <span>Delete <b>{category.name}</b>?{counts.get(category.id) ? ` Its ${counts.get(category.id)} ${counts.get(category.id) === 1 ? 'event stays' : 'events stay'} on the calendar without a category.` : ''}</span>
+          <button className="btn secondary small danger-text" onClick={() => { save(current => deleteEventCategory(current, category.id), 'Category deleted'); setDeleting(null); }}>Delete</button>
+          <button className="btn secondary small" onClick={() => setDeleting(null)}>Cancel</button>
+        </div>
+        : <div key={category.id} className="event-category-row">
+          <i className="category-dot" style={{ background: category.color }} aria-hidden="true"/>
+          <span className="event-category-name">{category.name}<small>{counts.get(category.id) || 'No'} {counts.get(category.id) === 1 ? 'event' : 'events'}</small></span>
+          <button className="icon-btn" aria-label={`Edit ${category.name}`} onClick={() => { setError(''); setEditing(category.id); setDeleting(null); }}><Pencil size={15}/></button>
+          <button className="icon-btn danger" aria-label={`Delete ${category.name}`} onClick={() => { setError(''); setDeleting(category.id); setEditing(null); }}><Trash2 size={15}/></button>
+        </div>)}</div>}
+    <form className="event-category-row add" onSubmit={event => {
+      event.preventDefault();
+      const form = event.currentTarget;
+      const fields = Object.fromEntries(new FormData(form));
+      attempt(() => { save(current => ({ ...current, eventCategories: [...current.eventCategories, eventCategoryFromFields(fields, current.eventCategories)] }), 'Category added'); form.reset(); setNewColor(randomColor()); });
+    }}>
+      <input type="color" name="color" value={newColor} onChange={e => setNewColor(e.target.value)} aria-label="New category color" className="category-color-input"/>
+      <input name="name" maxLength={40} placeholder="New category, e.g. Date nights" aria-label="New category name" required/>
+      <button className="btn primary small"><Plus size={15}/> Add</button>
+    </form>
+    {error && <p className="form-error" role="alert">{error}</p>}
+    <div className="form-actions"><button type="button" className="btn secondary" onClick={close}>Done</button></div>
+  </div>;
 }

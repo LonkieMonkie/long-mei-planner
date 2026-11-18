@@ -16,7 +16,7 @@ export const EVENT_COLORS = [
   ['Sage', '#4c8363'], ['Rose', '#e0718b'], ['Honey', '#d9a520'], ['Sky', '#5a9ccc'],
   ['Lavender', '#9b7fd1'], ['Tangerine', '#e8743b'], ['Berry', '#b0446a'], ['Slate', '#5f6b7a'],
 ];
-const isColor = value => typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value);
+export const isColor = value => typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value);
 const DAY = 86_400_000;
 const parts = key => key.split('-').map(Number);
 const daysInMonth = (year, month) => new Date(Date.UTC(year, month, 0)).getUTCDate();
@@ -68,7 +68,8 @@ export function eventFromFields(fields, id = crypto.randomUUID()) {
   const title = fields.title.trim();
   if (!title) throw new Error('Enter a title.');
   if (!isDateKey(fields.date)) throw new Error('Choose a valid event date.');
-  const event = { id, title, date: fields.date, time: fields.time ?? '', description: (fields.description ?? '').trim(), ...(isColor(fields.color) ? { color: fields.color.toLowerCase() } : {}) };
+  const event = { id, title, date: fields.date, time: fields.time ?? '', description: (fields.description ?? '').trim(), ...(isColor(fields.color) ? { color: fields.color.toLowerCase() } : {}),
+    ...(typeof fields.categoryId === 'string' && fields.categoryId ? { categoryId: fields.categoryId } : {}) };
   const freq = REPEATS.some(item => item.id === fields.freq) ? fields.freq : 'none';
   if (freq === 'none') return event;
   const ends = ['never', 'on', 'after'].includes(fields.ends) ? fields.ends : 'never';
@@ -123,6 +124,7 @@ export function editEvent(events, original, date, scope, edited) {
 export function normalizeEvent(event) {
   const clean = { ...event };
   if (!isColor(clean.color)) delete clean.color;
+  if (typeof clean.categoryId !== 'string' || !clean.categoryId) delete clean.categoryId;
   delete clean.repeat;
   delete clean.skip;
   const repeat = event.repeat;
@@ -135,3 +137,27 @@ export function normalizeEvent(event) {
   }
   return clean;
 }
+
+// Event categories are created, renamed, recolored and deleted by the couple. Deleting one
+// leaves its events in place, without a category.
+export function eventCategoryFromFields(fields, categories, previous) {
+  const name = String(fields.name ?? '').trim().slice(0, 40);
+  if (!name) throw new Error('Enter a category name.');
+  const taken = categories.find(category => category.id !== previous?.id && category.name.toLowerCase() === name.toLowerCase());
+  if (taken) throw new Error(`There’s already a category called ${taken.name}.`);
+  if (!isColor(fields.color)) throw new Error('Choose a color.');
+  return { id: previous?.id ?? crypto.randomUUID(), name, color: fields.color.toLowerCase() };
+}
+
+export const deleteEventCategory = (state, id) => ({
+  ...state,
+  eventCategories: state.eventCategories.filter(category => category.id !== id),
+  events: state.events.map(event => {
+    if (event.categoryId !== id) return event;
+    const { categoryId, ...rest } = event;
+    return rest;
+  }),
+});
+
+export const normalizeEventCategories = list => (Array.isArray(list) ? list : []).filter(category =>
+  typeof category?.id === 'string' && typeof category.name === 'string' && category.name.trim() && isColor(category.color));
