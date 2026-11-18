@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { Check, Download, RotateCcw } from 'lucide-react';
 import { DEFAULT_ACCENT, LEGACY_ACCENT, accentStyles, parseAccent } from './appearance.js';
 import { ActionForm, PanelHeading } from './ui.jsx';
-import { decimalUnits, shortDate } from './model.js';
+import { decimalUnits, localDate, shortDate } from './model.js';
+import { storageUsage } from './insights.js';
 import { CHANGELOG, VERSION } from './changelog.js';
 import { TREE_KINDS } from './tree-model.js';
 
@@ -102,5 +103,27 @@ export function VersionCard() {
       <summary><strong>{release.version}</strong><span>{shortDate(release.date)}</span>{index === 0 && <em>Current</em>}</summary>
       <ul>{release.changes.map(change => <li key={change}>{change}</li>)}</ul>
     </details>)}</div>
+  </section>;
+}
+
+const kb = bytes => bytes < 1024 ? `${bytes} bytes` : `${(bytes / 1024).toLocaleString('en-US', { maximumFractionDigits: 1 })} KB`;
+
+export function StorageCard({ json, entries, synced }) {
+  const usage = storageUsage(json, entries, localDate());
+  const percent = usage.ratio * 100;
+  const level = percent >= 90 ? 'over' : percent >= 75 ? 'warn' : '';
+  const years = usage.yearsLeft;
+  return <section className="card settings-card">
+    <PanelHeading title="Planner storage" subtitle={synced ? 'Your shared planner is stored as one document, which can hold up to 1 MB.' : 'This planner is stored in this browser.'}/>
+    <div className="storage-meter">
+      <div className="storage-figures"><strong>{percent < 1 ? '<1' : Math.round(percent)}% used</strong><span>{kb(usage.bytes)} of 1 MB · {entries.length} {entries.length === 1 ? 'entry' : 'entries'}</span></div>
+      <div className="progress" role="progressbar" aria-label="Planner storage used" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(percent)}>
+        <span className={level ? `storage-${level}` : ''} style={{ width: Math.min(100, Math.max(percent, 0.8)) + '%' }}/>
+      </div>
+      <p className="field-help">{years === null ? 'No entries in the last 90 days, so there’s no pace to estimate from yet.'
+        : years > 50 ? 'At your current pace, it won’t fill up for more than 50 years.'
+        : `At your current pace, it has room for about ${years < 1 ? 'less than a year' : `${Math.floor(years)} more ${Math.floor(years) === 1 ? 'year' : 'years'}`}.`}
+        {level && ' Ask to split storage by year before it fills up; saving stops working at 100%.'}</p>
+    </div>
   </section>;
 }

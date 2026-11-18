@@ -1,6 +1,9 @@
 // What changed in each release, newest first. Add an entry and bump "version" in
 // package.json together; a test checks that they match.
 export const CHANGELOG = [
+  { version: '2.12.1', date: '2026-11-18', changes: [
+    'Planner storage in Settings: how much of the 1 MB synced planner is used, and roughly how many years of room are left at your pace.',
+  ] },
   { version: '2.12.0', date: '2026-11-18', changes: [
     'New Insights tab: a monthly or yearly recap, spending by category, a comparison with the period before, a 6 or 12 month trend, and highlights.',
     'Budget warnings: categories turn amber at 80% of their limit and red when over, with a heads-up on the dashboard.',

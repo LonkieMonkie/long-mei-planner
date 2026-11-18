@@ -473,3 +473,14 @@ test('goal target dates give the monthly amount needed and whether the pace is o
   const read = readState({ getItem: () => JSON.stringify({ ...freshData(), goals: [{ id: 'wedding', name: 'Wedding', target: 1, targetDate: 'soon' }] }) });
   assert.equal('targetDate' in read.goals[0], false);
 });
+
+test('planner storage reports the share of the 1 MB document used and the years left at the recent pace', async () => {
+  const { storageUsage, STORAGE_LIMIT } = await import('../src/insights.js');
+  const entries = Array.from({ length: 90 }, (_, i) => ({ date: `2026-${String(9 + Math.floor(i / 30)).padStart(2, '0')}-${String(1 + i % 28).padStart(2, '0')}` }));
+  const json = 'é'.repeat(9_000); // two bytes each in UTF-8
+  const usage = storageUsage(json, entries, '2026-11-30');
+  assert.equal(usage.bytes, 18_000);
+  assert.equal(usage.ratio, 18_000 / STORAGE_LIMIT);
+  assert.equal(Math.round(usage.yearsLeft), 14); // 200 bytes per entry, 90 entries in 90 days
+  assert.equal(storageUsage('{}', [], '2026-11-30').yearsLeft, null);
+});

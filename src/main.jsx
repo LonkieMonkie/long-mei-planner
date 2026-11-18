@@ -8,7 +8,7 @@ import { Insights } from './insights-page.jsx';
 import { personalSavings } from './personal-savings.js';
 import { DebtTracker } from './debts.jsx';
 import { Dialogs } from './dialogs.jsx';
-import { ExportCard, Settings, TreeSettings, VersionCard } from './settings.jsx';
+import { ExportCard, Settings, StorageCard, TreeSettings, VersionCard } from './settings.jsx';
 import { accentStyles } from './appearance.js';
 import { PlantPair } from './plants.jsx';
 import { PEOPLE, STORAGE_KEY, categoryColor, entryContribution, entryTime, goalShares, freshData, localDate, readState, summarize } from './model.js';
@@ -249,7 +249,7 @@ function App() {
         {active === 'insights' && <Insights state={state}/>}
         {active === 'my-savings' && <MySavings state={state} me={session.me} open={setModal} editEntry={edit}/>}
         {active === 'debts' && <DebtTracker debts={state.debts} open={setModal}/>}
-        {active === 'settings' && <>{cloudOn && <AccountCard session={session} signOut={signOut}/>}<ProfilePictureCard me={session.me} avatars={avatars} setAvatar={setAvatar} notify={message => setNotice({ message })}/><Settings key={state.accentColor} accent={state.accentColor} save={save}/><TreeSettings key={state.tree.kind + state.tree.perMeter} tree={state.tree} save={save}/><ExportCard onExport={() => exportExcel(state, totals)}/><VersionCard/></>}
+        {active === 'settings' && <>{cloudOn && <AccountCard session={session} signOut={signOut}/>}<ProfilePictureCard me={session.me} avatars={avatars} setAvatar={setAvatar} notify={message => setNotice({ message })}/><Settings key={state.accentColor} accent={state.accentColor} save={save}/><TreeSettings key={state.tree.kind + state.tree.perMeter} tree={state.tree} save={save}/><ExportCard onExport={() => exportExcel(state, totals)}/><StorageCard json={cloudOn ? remote.current?.json : (() => { try { return localStorage.getItem(STORAGE_KEY); } catch { return ''; } })()} entries={state.entries} synced={cloudOn}/><VersionCard/></>}
         </ErrorBoundary>
       </div>
     </main>

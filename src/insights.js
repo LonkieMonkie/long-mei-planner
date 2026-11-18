@@ -132,3 +132,16 @@ export function goalPlan(goal, total, forecast, today) {
   } else if (forecast.status === 'far' || forecast.status === 'stalled') pace = 'behind';
   return { status: 'open', remaining, months: Math.round(months), perMonth, pace, late };
 }
+
+// How full the synced planner document is. Firestore allows 1 MiB per document; the planner
+// is one JSON string, so its UTF-8 size is a close estimate. Growth is estimated from the
+// entries logged in the last 90 days.
+export const STORAGE_LIMIT = 1_048_576;
+export function storageUsage(json, entries, today) {
+  const bytes = new TextEncoder().encode(json ?? '').length;
+  const perEntry = entries.length ? bytes / entries.length : 250;
+  const since = new Date(Date.parse(today) - 90 * DAY).toISOString().slice(0, 10);
+  const recent = entries.filter(entry => entry.date >= since && entry.date <= today).length;
+  const perYear = recent * perEntry * 365 / 90;
+  return { bytes, ratio: bytes / STORAGE_LIMIT, yearsLeft: perYear > 0 ? Math.max(0, (STORAGE_LIMIT - bytes) / perYear) : null };
+}
