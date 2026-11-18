@@ -402,7 +402,11 @@ button.secondary:active { box-shadow: 0 1px 0 var(--color-line); }
 .event-category-name { flex: 1; min-width: 0; font-size: 14px; font-weight: 700; }
 .event-category-name small { display: block; font-size: 11px; font-weight: 500; color: var(--color-muted); }
 .category-dot { width: 14px; height: 14px; flex-shrink: 0; border-radius: 50%; }
-.category-color-input { width: 36px; height: 36px; flex-shrink: 0; padding: 2px; border-radius: 50%; cursor: pointer; }
+.category-color-input { width: 30px; height: 30px; flex-shrink: 0; padding: 0; border: 2px solid var(--color-paper); border-radius: 50%; background: none; box-shadow: 0 0 0 1.5px var(--color-line); cursor: pointer; overflow: hidden; -webkit-appearance: none; appearance: none; }
+.category-color-input:hover { box-shadow: 0 0 0 1.5px var(--accent-border); }
+.category-color-input::-webkit-color-swatch-wrapper { padding: 0; }
+.category-color-input::-webkit-color-swatch { border: 0; border-radius: 50%; }
+.category-color-input::-moz-color-swatch { border: 0; border-radius: 50%; }
 .delete-choices { display: grid; gap: 8px; }
 .danger-text { color: #a5254a; }
 .danger-text:hover { background: #fce9ee; }
