@@ -58,7 +58,7 @@ export function ActionForm({ children, onSave, label = 'Save', cancel, disabled 
   </form>;
 }
 
-export function EntryHistory({ state, entries, onEdit, onDelete, compact = false }) {
+export function EntryHistory({ state, entries, onEdit, onDelete, compact = false, me = null }) {
   if (!entries.length) return <Empty icon={Receipt}>No entries for this view.</Empty>;
   const goals = new Map(state.goals.map(goal => [goal.id, goal.name]));
   return <div className="table-scroll"><table className="history-table">
@@ -72,10 +72,10 @@ export function EntryHistory({ state, entries, onEdit, onDelete, compact = false
         <td>{timestamp(entry.createdAt)}{entry.editedAt && <small title={timestamp(entry.editedAt)}>Edited {timestamp(entry.editedAt)}</small>}</td>
         <td className={entry.type === 'income' ? 'positive' : ''}><strong>{entry.type === 'income' ? '+' : '−'}{money(entry.amount)}</strong></td>
         <td>{entryContribution(entry) ? <><strong>{money(entryContribution(entry))}</strong><small>{goalShares(entry).map(share => `${goals.get(share.goalId)} · ${share.rate / 100}%`).join(', ')}{entry.type === 'income' && !entry.splits && ' · Legacy'}</small></> : '—'}</td>
-        {!compact && <td><div className="entry-actions">
+        {!compact && <td>{me && entry.personId !== me ? <span className="muted-dash" title="Only the person who logged an entry can change it">—</span> : <div className="entry-actions">
           <button className="icon-btn" aria-label={`Edit ${entry.source} entry`} title="Edit entry" onClick={() => onEdit(entry)}><Pencil size={15}/></button>
           <button className="icon-btn danger" aria-label={`Delete ${entry.source} entry`} title="Delete entry" onClick={() => onDelete(entry)}><Trash2 size={16}/></button>
-        </div></td>}
+        </div>}</td>}
       </tr>;
     })}</tbody>
   </table></div>;

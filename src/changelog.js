@@ -1,6 +1,13 @@
 // What changed in each release, newest first. Add an entry and bump "version" in
 // package.json together; a test checks that they match.
 export const CHANGELOG = [
+  { version: '2.13.0', date: '2026-11-18', changes: [
+    'Private budgets: each of you has your own categories and budgets. Your partner sees what you spend in each category, but never your budgets or what’s left.',
+    'Each of you started with your own copy of the old shared categories and limits. Wedding, My savings and Personal stay shared, with a separate budget for each of you.',
+    'The Budget page shows your categories with budget, spent, remaining and % used, and you can delete your own categories.',
+    'You can edit or delete only the entries you logged yourself.',
+    'Insights: view Together, Long or Mei; a new Income and savings card for each of you and the household; and the income vs. spending chart works weekly, monthly or yearly, side by side if you like.',
+  ] },
   { version: '2.12.1', date: '2026-11-18', changes: [
     'Planner storage in Settings: how much of the 1 MB synced planner is used, and roughly how many years of room are left at your pace.',
   ] },

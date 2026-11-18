@@ -61,7 +61,8 @@ test('restores records and upgrades older saved dashboards without changing thei
   const { firstPaydays, debts, ...old } = state;
   const storage = new Map([[STORAGE_KEY, JSON.stringify({ ...old, googleUrl: 'https://calendar.google.com/calendar/embed' })]]);
   const upgraded = readState({ getItem: key => storage.get(key) });
-  assert.deepEqual(upgraded, state);
+  // Reading also applies today's format (private category copies), so compare like with like.
+  assert.deepEqual(upgraded, readState({ getItem: () => JSON.stringify(state) }));
   assert.equal(summarize(upgraded).totalContributions, 6000);
   upgraded.entries = [entryFromFields(fields({ type: 'income', rate: '20', goalId: 'wedding' }), upgraded, upgraded.entries[0])];
   assert.equal('rate' in upgraded.entries[0], false);
@@ -164,7 +165,7 @@ test('an existing Wedding category keeps its rates and linked entry history when
   const restored = readState({ getItem: () => JSON.stringify(state) });
   const wedding = restored.categories.find(category => category.id === WEDDING_CATEGORY_ID);
   assert.equal(wedding.name, 'Wedding');
-  assert.equal(wedding.limit, 50_000);
+  assert.deepEqual(wedding.limits, { long: 50_000, mei: 50_000 });
   assert.deepEqual(wedding.savingsRates, { long: 3000, mei: 0 });
   assert.equal(restored.entries[0].categoryId, WEDDING_CATEGORY_ID);
   assert.equal(summarize(restored).jointBalance, summarize(state).jointBalance);
@@ -262,7 +263,7 @@ test('Personal is a permanent category, and an existing Personal category become
   const personal = read.categories.filter(category => category.id === 'personal');
   assert.equal(personal.length, 1);
   assert.equal(personal[0].name, 'Personal');
-  assert.equal(personal[0].limit, 20_000);
+  assert.deepEqual(personal[0].limits, { long: 20_000, mei: 20_000 });
   assert.equal(read.entries[0].categoryId, 'personal');
   assert.equal(readState({ getItem: () => JSON.stringify(freshData()) }).categories.filter(category => category.id === 'personal').length, 1);
 });
@@ -403,7 +404,7 @@ test('insights summarize a period, compare it with the one before, and build a m
   const nov = periodSummary(state, '2026-11');
   // The Wedding deposit is saved, not spent.
   assert.deepEqual([nov.income, nov.spent, nov.net, nov.toMySavings, nov.toGoals, nov.count], [100_000, 25_000, 75_000, 10_000, 50_000, 5]);
-  assert.deepEqual(nov.categories.map(row => [row.category.id, row.spent]), [['bills', 15_000], ['dining', 10_000]]);
+  assert.deepEqual(nov.categories.map(row => [row.name, row.spent]), [['Bills & subscriptions', 15_000], ['Dining out', 10_000]]);
   assert.equal(nov.biggest.amount, 15_000);
   assert.deepEqual(nov.busiestDay, { date: '2026-11-20', amount: 15_000 });
   assert.equal(periodSummary(state, '2026').spent, 34_000);
@@ -412,10 +413,14 @@ test('insights summarize a period, compare it with the one before, and build a m
 
 test('budget warnings flag categories at 80% or over with money left and days to go', async () => {
   const { budgetWarnings, warningLevel } = await import('../src/insights.js');
-  const state = freshData();
+  const { personalBudget } = await import('../src/model.js');
+  let state = freshData();
   state.categories = state.categories.map(category => ({ ...category, limit: { dining: 20_000, bills: 10_000, essentials: 50_000 }[category.id] ?? category.limit }));
-  const spent = new Map([['dining', 16_000], ['bills', 12_500], ['essentials', 10_000]]);
-  const warnings = budgetWarnings(state, spent, '2026-11-19');
+  state.entries = [['dining', '160'], ['bills', '125'], ['essentials', '100']].map(([categoryId, amount]) => entryFromFields(fields({ categoryId, amount, date: '2026-11-05' }), state));
+  state = readState({ getItem: () => JSON.stringify(state) });
+  const warnings = budgetWarnings(personalBudget(state, '2026-11', 'long'), '2026-11-19');
+  // Mei has the same limits on her own copies but no spending, so she gets no warnings.
+  assert.deepEqual(budgetWarnings(personalBudget(state, '2026-11', 'mei'), '2026-11-19'), []);
   assert.deepEqual(warnings.map(row => [row.category.id, row.level, row.left, row.daysLeft]), [['bills', 'over', -2_500, 12], ['dining', 'warn', 4_000, 12]]);
   assert.deepEqual([warningLevel(7_999, 10_000), warningLevel(8_000, 10_000), warningLevel(10_001, 10_000), warningLevel(5, 0)], [null, 'warn', 'over', null]);
 });
@@ -483,4 +488,56 @@ test('planner storage reports the share of the 1 MB document used and the years 
   assert.equal(usage.ratio, 18_000 / STORAGE_LIMIT);
   assert.equal(Math.round(usage.yearsLeft), 14); // 200 bytes per entry, 90 entries in 90 days
   assert.equal(storageUsage('{}', [], '2026-11-30').yearsLeft, null);
+});
+
+test('existing shared categories become one private copy per person, with entries and splits moved to their copy', async () => {
+  const { limitFor, personalBudget, visibleCategories } = await import('../src/model.js');
+  const old = freshData();
+  old.categories = old.categories.map(category => category.id === 'dining' ? { ...category, limit: 30_000, savingsRates: { long: 1000, mei: 2000 }, incomeShares: { mei: 1500 } }
+    : category.id === 'wedding' ? { ...category, limit: 5_000 } : category);
+  old.entries = [
+    entryFromFields(fields({ categoryId: 'dining', personId: 'long', amount: '40', date: '2026-11-02' }), old),
+    entryFromFields(fields({ categoryId: 'dining', personId: 'mei', amount: '25', date: '2026-11-03' }), old),
+    entryFromFields(fields({ type: 'income', personId: 'mei', amount: '100', date: '2026-11-01', splits: JSON.stringify([{ categoryId: 'dining', rate: 1500 }]) }), old),
+  ];
+  const state = readState({ getItem: () => JSON.stringify(old) });
+  const dining = state.categories.filter(category => category.name === 'Dining out');
+  assert.deepEqual(dining.map(category => [category.id, category.ownerId, category.limit, category.savingsRates, category.incomeShares]),
+    [['dining', 'long', 30_000, { long: 1000 }, undefined], ['dining-mei', 'mei', 30_000, { mei: 2000 }, { mei: 1500 }]]);
+  assert.deepEqual(state.entries.map(entry => entry.categoryId || entry.splits[0].categoryId), ['dining', 'dining-mei', 'dining-mei']);
+  // Reading again changes nothing, so both phones agree.
+  assert.deepEqual(readState({ getItem: () => JSON.stringify(state) }), state);
+  // Each person sees only their own copies plus the shared permanent categories.
+  const longSees = visibleCategories(state, 'long').map(category => category.id);
+  assert.ok(longSees.includes('dining') && !longSees.includes('dining-mei') && longSees.includes('wedding'));
+  const wedding = state.categories.find(category => category.id === 'wedding');
+  assert.deepEqual([limitFor(wedding, 'long'), limitFor(wedding, 'mei')], [5_000, 5_000]);
+  const mine = personalBudget(state, '2026-11', 'mei');
+  assert.deepEqual([mine.spent, mine.spentByCategory.get('dining-mei'), mine.budgeted], [2_500, 2_500, 30_000 + 5_000]);
+  assert.equal(mine.categories.some(category => category.id === 'dining'), false);
+  // An expense can't be logged in the other person's category.
+  assert.throws(() => entryFromFields(fields({ categoryId: 'dining', personId: 'mei' }), state), /other profile/);
+});
+
+test('household insights group both people\'s copies of a category, split by person, and trend by week, month or year', async () => {
+  const { householdTotals, periodSummary, trend, weekStart } = await import('../src/insights.js');
+  let state = freshData();
+  state.entries = [
+    entryFromFields(fields({ type: 'income', personId: 'long', amount: '1000', date: '2026-11-02' }), state),
+    entryFromFields(fields({ type: 'income', personId: 'mei', amount: '800', date: '2026-11-10', splits: JSON.stringify([{ categoryId: 'my-savings', rate: 2500 }]) }), state),
+    entryFromFields(fields({ categoryId: 'dining', personId: 'long', amount: '30', date: '2026-11-03' }), state),
+    entryFromFields(fields({ categoryId: 'dining', personId: 'mei', amount: '20', date: '2026-11-11' }), state),
+    entryFromFields(fields({ categoryId: 'wedding', personId: 'mei', amount: '100', date: '2026-11-12' }), state),
+  ];
+  state = readState({ getItem: () => JSON.stringify(state) });
+  assert.deepEqual(periodSummary(state, '2026-11').categories.map(row => [row.name, row.spent]), [['Dining out', 5_000]]);
+  assert.deepEqual(periodSummary(state, '2026-11', 'mei').categories.map(row => [row.name, row.spent]), [['Dining out', 2_000]]);
+  const household = householdTotals(state, '2026-11');
+  assert.deepEqual(household.people.mei, { income: 80_000, spent: 2_000, mySavings: 20_000, joint: 10_000 });
+  assert.deepEqual(household.together, { income: 180_000, spent: 5_000, mySavings: 20_000, joint: 10_000 });
+  assert.equal(weekStart('2026-11-15'), '2026-11-09'); // Sunday belongs to the week starting Monday
+  const weeks = trend(state, 'week', '2026-11-15', 3);
+  assert.deepEqual(weeks.map(row => [row.key, row.income, row.spent, row.people.long.spent]), [['2026-10-26', 0, 0, 0], ['2026-11-02', 100_000, 3_000, 3_000], ['2026-11-09', 80_000, 2_000, 0]]);
+  assert.deepEqual(trend(state, 'week', '2026-11-15', 3, 'mei').map(row => row.income), [0, 0, 80_000]);
+  assert.deepEqual(trend(state, 'year', '2026-11-15', 2).map(row => [row.key, row.spent]), [['2025', 0], ['2026', 5_000]]);
 });

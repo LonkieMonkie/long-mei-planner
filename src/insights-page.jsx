@@ -1,8 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ArrowDownRight, ArrowUpRight, BarChart3, CalendarDays, ChevronLeft, ChevronRight, Minus, Receipt, Trophy } from 'lucide-react';
-import { categoryColor, localDate, money, shortDate } from './model.js';
-import { monthLabel, monthlyTrend, periodRange, periodSummary, shiftMonth } from './insights.js';
-import { Empty, PanelHeading } from './ui.jsx';
+import { PEOPLE, dateFromKey, localDate, money, shortDate } from './model.js';
+import { householdTotals, monthLabel, periodRange, periodSummary, shiftMonth, trend } from './insights.js';
+import { Avatar, Empty, PanelHeading } from './ui.jsx';
 
 // Income and spending colors for charts: checked for colorblind separation and contrast on the card.
 const INCOME = '#2f78b7';
@@ -18,9 +18,12 @@ export function Insights({ state }) {
   const thisMonth = localDate().slice(0, 7);
   const [mode, setMode] = useState('month');
   const [key, setKey] = useState(thisMonth);
+  const [who, setWho] = useState('all');
+  const personId = who === 'all' ? null : who;
   const period = periodRange(key);
-  const now = periodSummary(state, key);
-  const before = periodSummary(state, period.previous);
+  const now = periodSummary(state, key, personId);
+  const before = periodSummary(state, period.previous, personId);
+  const whoLabel = personId ? PEOPLE.find(person => person.id === personId).name : 'Together';
   const previousLabel = mode === 'month' ? monthLabel(period.previous, 'short') : period.previous;
   const latest = mode === 'month' ? thisMonth : thisMonth.slice(0, 4);
   function chooseMode(next) {
@@ -36,6 +39,10 @@ export function Insights({ state }) {
         <strong>{period.label}</strong>
         <button className="icon-btn" aria-label={`Next ${mode}`} onClick={() => step(1)} disabled={key >= latest}><ChevronRight size={17}/></button>
       </div>
+      <div className="segmented period-mode" aria-label="Whose money">
+        <button type="button" aria-pressed={who === 'all'} onClick={() => setWho('all')}>Together</button>
+        {PEOPLE.map(person => <button type="button" key={person.id} aria-pressed={who === person.id} onClick={() => setWho(person.id)}>{person.name}</button>)}
+      </div>
     </div>
 
     <div className="recap-grid">
@@ -48,21 +55,22 @@ export function Insights({ state }) {
 
     <div className="insights-columns">
       <section className="card">
-        <PanelHeading title="Where it went" subtitle={`Spending by category, ${period.label}`}/>
+        <PanelHeading title="Where it went" subtitle={`${whoLabel} · spending by category, ${period.label}`}/>
         {!now.categories.length ? <Empty icon={Receipt}>No spending logged for {period.label}.</Empty>
-          : <ul className="where-bars">{now.categories.map(({ category, spent }) => <li key={category.id}>
-            <div className="where-label"><span>{category.name}</span><span><b>{money(spent)}</b> · {Math.round(spent / now.spent * 100)}%</span></div>
-            <div className="where-track"><span style={{ width: `${Math.max(2, spent / now.categories[0].spent * 100)}%`, background: categoryColor(category) }}/></div>
+          : <ul className="where-bars">{now.categories.map(({ name, color, spent }) => <li key={name}>
+            <div className="where-label"><span>{name}</span><span><b>{money(spent)}</b> · {Math.round(spent / now.spent * 100)}%</span></div>
+            <div className="where-track"><span style={{ width: `${Math.max(2, spent / now.categories[0].spent * 100)}%`, background: color }}/></div>
           </li>)}</ul>}
       </section>
       <section className="card">
         <PanelHeading title={`Compared with ${previousLabel}`} subtitle="Spending by category, this period against the one before"/>
-        <Comparison state={state} now={now} before={before}/>
+        <Comparison now={now} before={before}/>
       </section>
     </div>
 
-    <TrendCard state={state} mode={mode} periodKey={key}/>
-    <Highlights now={now} label={period.label}/>
+    <HouseholdCard state={state} periodKey={key} label={period.label}/>
+    <TrendCard state={state} endDate={period.to < localDate() ? period.to : localDate()} personId={personId} whoLabel={whoLabel}/>
+    <Highlights now={now} label={`${period.label} highlights${personId ? ' · ' + whoLabel : ''}`}/>
   </>;
 }
 
@@ -83,10 +91,10 @@ function RecapTile({ label, value, previous, previousLabel, upIsGood = false, ca
   </article>;
 }
 
-function Comparison({ state, now, before }) {
-  const rows = state.categories
-    .map(category => ({ category, now: now.byCategory.get(category.id) ?? 0, before: before.byCategory.get(category.id) ?? 0 }))
-    .filter(row => row.now || row.before)
+function Comparison({ now, before }) {
+  const names = new Set([...now.byCategory.keys(), ...before.byCategory.keys()]);
+  const rows = [...names]
+    .map(name => ({ name, color: (now.byCategory.get(name) ?? before.byCategory.get(name)).color, now: now.byCategory.get(name)?.spent ?? 0, before: before.byCategory.get(name)?.spent ?? 0 }))
     .sort((a, b) => Math.abs(b.now - b.before) - Math.abs(a.now - a.before));
   if (!rows.length) return <Empty icon={BarChart3}>No spending in either period yet.</Empty>;
   return <div className="table-scroll"><table className="compare-table">
@@ -94,13 +102,29 @@ function Comparison({ state, now, before }) {
     <tbody>{rows.map(row => {
       const change = row.now - row.before;
       const Icon = change > 0 ? ArrowUpRight : change < 0 ? ArrowDownRight : Minus;
-      return <tr key={row.category.id}>
-        <td><span className="compare-name"><i style={{ background: categoryColor(row.category) }} aria-hidden="true"/>{row.category.name}</span></td>
+      return <tr key={row.name}>
+        <td><span className="compare-name"><i style={{ background: row.color }} aria-hidden="true"/>{row.name}</span></td>
         <td>{money(row.now)}</td><td>{money(row.before)}</td>
         <td className="change"><span><Icon size={13} aria-hidden="true"/>{change ? (change > 0 ? '+' : '−') + money(Math.abs(change)) : 'Same'}</span></td>
       </tr>;
     })}</tbody>
   </table></div>;
+}
+
+// Each partner's earnings and savings next to the combined household figures. Budget limits
+// are never shown here, so nothing private is revealed.
+function HouseholdCard({ state, periodKey, label }) {
+  const { people, together } = householdTotals(state, periodKey);
+  const rows = [['Income', 'income'], ['Spending', 'spent'], ['To own savings', 'mySavings'], ['To joint goals', 'joint']];
+  return <section className="card">
+    <PanelHeading title="Income and savings" subtitle={`Each of you and the household, ${label}`}/>
+    <div className="table-scroll"><table className="compare-table household-table">
+      <thead><tr><th scope="col"><span className="sr-only">Measure</span></th>{PEOPLE.map(person => <th scope="col" key={person.id}><span className="household-person"><Avatar id={person.id}/>{person.name}</span></th>)}<th scope="col">Together</th></tr></thead>
+      <tbody>{rows.map(([title, field]) => <tr key={field}>
+        <td>{title}</td>{PEOPLE.map(person => <td key={person.id}>{money(people[person.id][field])}</td>)}<td><b>{money(together[field])}</b></td>
+      </tr>)}</tbody>
+    </table></div>
+  </section>;
 }
 
 function useWidth(ref) {
@@ -122,31 +146,49 @@ const niceStep = max => {
   return [1, 2, 2.5, 5, 10].map(n => n * power).find(n => n >= raw);
 };
 
-function TrendCard({ state, mode, periodKey }) {
-  const [span, setSpan] = useState(6);
-  const months = mode === 'year' ? 12 : span;
-  const end = mode === 'year' ? periodKey + '-12' : periodKey;
-  const rows = monthlyTrend(state, end, months);
+const UNITS = { week: { count: 12, label: '12 weeks' }, month: { count: 12, label: '12 months' }, year: { count: 5, label: '5 years' } };
+const bucketLabel = (unit, key, long = false) => unit === 'year' ? key
+  : unit === 'month' ? (long ? monthLabel(key) : monthLabel(key, 'short').split(' ')[0])
+  : (long ? 'Week of ' : '') + dateFromKey(key).toLocaleDateString('en-US', { month: 'short', day: 'numeric', ...(long ? { year: 'numeric' } : {}) });
+
+function TrendCard({ state, endDate, personId, whoLabel }) {
+  const [unit, setUnit] = useState('month');
+  const [compare, setCompare] = useState(false);
+  const rows = trend(state, unit, endDate, UNITS[unit].count, personId);
   const hasData = rows.some(row => row.income || row.spent);
+  const series = compare ? PEOPLE.map(person => ({ id: person.id, title: person.name, rows: rows.map(row => ({ key: row.key, ...row.people[person.id] })) }))
+    : [{ id: 'one', title: null, rows }];
+  const max = Math.max(1, ...series.flatMap(item => item.rows.flatMap(row => [row.income, row.spent])));
   return <section className="card">
-    <PanelHeading title="Income and spending over time" subtitle={mode === 'year' ? `Each month of ${periodKey}` : `The ${span} months up to ${monthLabel(periodKey)}`}
-      action={mode === 'month' && <div className="segmented small-segmented" aria-label="How many months"><button type="button" aria-pressed={span === 6} onClick={() => setSpan(6)}>6 months</button><button type="button" aria-pressed={span === 12} onClick={() => setSpan(12)}>12 months</button></div>}/>
+    <PanelHeading title="Income vs. spending" subtitle={`${compare ? 'Each of you, side by side' : whoLabel} · the last ${UNITS[unit].label}`}
+      action={<div className="trend-controls">
+        <div className="segmented small-segmented" aria-label="Time steps">{['week', 'month', 'year'].map(value => <button type="button" key={value} aria-pressed={unit === value} onClick={() => setUnit(value)}>{value === 'week' ? 'Weekly' : value === 'month' ? 'Monthly' : 'Yearly'}</button>)}</div>
+        <label className="check-row compare-toggle"><input type="checkbox" checked={compare} onChange={e => setCompare(e.target.checked)}/>Side by side</label>
+      </div>}/>
     <div className="chart-legend"><span><i style={{ background: INCOME }}/>Income</span><span><i style={{ background: SPENDING }}/>Spending</span></div>
-    {hasData ? <TrendChart rows={rows}/> : <Empty icon={BarChart3}>Nothing logged in these months yet.</Empty>}
+    {!hasData ? <Empty icon={BarChart3}>Nothing logged in this time range yet.</Empty>
+      : <div className={compare ? 'trend-multiples' : ''}>{series.map(item => <div key={item.id}>
+        {item.title && <p className="multiple-title"><Avatar id={item.id}/>{item.title}</p>}
+        <TrendChart rows={item.rows} unit={unit} max={max} height={compare ? 190 : 240}/>
+      </div>)}</div>}
     {hasData && <details className="chart-table"><summary>View as table</summary><div className="table-scroll"><table className="compare-table">
-      <thead><tr><th scope="col">Month</th><th scope="col">Income</th><th scope="col">Spending</th><th scope="col">Left over</th></tr></thead>
-      <tbody>{rows.map(row => <tr key={row.month}><td>{monthLabel(row.month, 'short')}</td><td>{money(row.income)}</td><td>{money(row.spent)}</td><td>{row.income - row.spent < 0 ? '−' : ''}{money(Math.abs(row.income - row.spent))}</td></tr>)}</tbody>
+      <thead><tr><th scope="col">{unit === 'week' ? 'Week of' : unit === 'month' ? 'Month' : 'Year'}</th>
+        {compare ? PEOPLE.flatMap(person => [<th scope="col" key={person.id + 'i'}>{person.name} income</th>, <th scope="col" key={person.id + 's'}>{person.name} spending</th>])
+          : [<th scope="col" key="i">Income</th>, <th scope="col" key="s">Spending</th>, <th scope="col" key="l">Left over</th>]}</tr></thead>
+      <tbody>{rows.map(row => <tr key={row.key}><td>{bucketLabel(unit, row.key, unit !== 'month')}</td>
+        {compare ? PEOPLE.flatMap(person => [<td key={person.id + 'i'}>{money(row.people[person.id].income)}</td>, <td key={person.id + 's'}>{money(row.people[person.id].spent)}</td>])
+          : [<td key="i">{money(row.income)}</td>, <td key="s">{money(row.spent)}</td>, <td key="l">{row.income - row.spent < 0 ? '−' : ''}{money(Math.abs(row.income - row.spent))}</td>]}</tr>)}</tbody>
     </table></div></details>}
   </section>;
 }
 
-function TrendChart({ rows }) {
+function TrendChart({ rows, unit, max: sharedMax, height = 240 }) {
   const box = useRef(null);
   const width = useWidth(box);
   const [hover, setHover] = useState(null);
-  const height = 240, top = 12, bottom = 28, left = 52, right = 8;
+  const top = 12, bottom = 28, left = 52, right = 8;
   const plotW = Math.max(120, width - left - right), plotH = height - top - bottom;
-  const max = Math.max(1, ...rows.flatMap(row => [row.income, row.spent]));
+  const max = sharedMax ?? Math.max(1, ...rows.flatMap(row => [row.income, row.spent]));
   const stepSize = niceStep(max);
   const ticks = Array.from({ length: Math.ceil(max / stepSize) + 1 }, (_, i) => i * stepSize);
   const yMax = ticks[ticks.length - 1];
@@ -159,30 +201,30 @@ function TrendChart({ rows }) {
     const yt = top + plotH - h;
     return `M${x} ${top + plotH}V${yt + r}Q${x} ${yt} ${x + r} ${yt}H${x + barW - r}Q${x + barW} ${yt} ${x + barW} ${yt + r}V${top + plotH}Z`;
   };
-  const showLabels = band >= 34 ? 1 : band >= 20 ? 2 : 3;
+  const showLabels = band >= (unit === 'week' ? 46 : 34) ? 1 : band >= 22 ? 2 : 3;
   useEffect(() => setHover(null), [rows.length]);
   const active = hover === null ? null : rows[hover];
   return <div className="trend-chart" ref={box} onPointerLeave={() => setHover(null)}>
-    <svg width={width} height={height} role="img" aria-label="Income and spending by month. The table below lists every value.">
+    <svg width={width} height={height} role="img" aria-label={`Income and spending by ${unit}. The table below lists every value.`}>
       {ticks.map(tick => <g key={tick}>
         <line x1={left} x2={left + plotW} y1={y(tick)} y2={y(tick)} className="chart-grid"/>
         <text x={left - 8} y={y(tick) + 4} textAnchor="end" className="chart-tick">{shortMoney(tick)}</text>
       </g>)}
       {rows.map((row, i) => {
         const x0 = left + i * band + (band - (barW * 2 + 2)) / 2;
-        return <g key={row.month} className={hover === null || hover === i ? 'trend-group' : 'trend-group dim'}>
+        return <g key={row.key} className={hover === null || hover === i ? 'trend-group' : 'trend-group dim'}>
           <path d={bar(x0, row.income)} fill={INCOME}/>
           <path d={bar(x0 + barW + 2, row.spent)} fill={SPENDING}/>
-          {i % showLabels === 0 && <text x={left + i * band + band / 2} y={height - 8} textAnchor="middle" className="chart-tick">{monthLabel(row.month, 'short').split(' ')[0]}</text>}
+          {i % showLabels === 0 && <text x={left + i * band + band / 2} y={height - 8} textAnchor="middle" className="chart-tick">{bucketLabel(unit, row.key)}</text>}
           <rect x={left + i * band} y={top} width={band} height={plotH} fill="transparent" tabIndex={0}
-            aria-label={`${monthLabel(row.month)}: income ${money(row.income)}, spending ${money(row.spent)}`}
+            aria-label={`${bucketLabel(unit, row.key, true)}: income ${money(row.income)}, spending ${money(row.spent)}`}
             onPointerMove={() => setHover(i)} onFocus={() => setHover(i)} onBlur={() => setHover(null)}/>
         </g>;
       })}
       <line x1={left} x2={left + plotW} y1={top + plotH} y2={top + plotH} className="chart-axis"/>
     </svg>
     {active && <div className="chart-tooltip" role="status" style={{ left: Math.min(Math.max(left + hover * band + band / 2, 90), width - 90) }}>
-      <span className="tooltip-title">{monthLabel(active.month)}</span>
+      <span className="tooltip-title">{bucketLabel(unit, active.key, true)}</span>
       <span><i style={{ background: INCOME }}/><b>{money(active.income)}</b> income</span>
       <span><i style={{ background: SPENDING }}/><b>{money(active.spent)}</b> spending</span>
       <span className="tooltip-net">{active.income - active.spent < 0 ? '−' : ''}{money(Math.abs(active.income - active.spent))} left over</span>
@@ -194,12 +236,12 @@ function Highlights({ now, label }) {
   const savedShare = now.income ? Math.round((now.toGoals + now.toMySavings) / now.income * 100) : null;
   const items = [
     now.biggest && { Icon: Receipt, title: 'Biggest expense', value: money(now.biggest.amount), note: `${now.biggest.source} · ${shortDate(now.biggest.date)}` },
-    now.categories[0] && { Icon: Trophy, title: 'Top category', value: now.categories[0].category.name, note: `${money(now.categories[0].spent)} · ${Math.round(now.categories[0].spent / now.spent * 100)}% of spending` },
+    now.categories[0] && { Icon: Trophy, title: 'Top category', value: now.categories[0].name, note: `${money(now.categories[0].spent)} · ${Math.round(now.categories[0].spent / now.spent * 100)}% of spending` },
     now.busiestDay && { Icon: CalendarDays, title: 'Biggest spending day', value: shortDate(now.busiestDay.date), note: `${money(now.busiestDay.amount)} spent` },
     { Icon: BarChart3, title: 'Saved from income', value: savedShare === null ? '—' : `${savedShare}%`, note: `${now.count} ${now.count === 1 ? 'entry' : 'entries'} logged` },
   ].filter(Boolean);
   return <section className="card">
-    <PanelHeading title={`${label} highlights`} subtitle="A quick recap to look back on together"/>
+    <PanelHeading title={label} subtitle="A quick recap to look back on together"/>
     <div className="highlights">{items.map(({ Icon, title, value, note }) => <article key={title}>
       <span className="icon-tile indigo"><Icon size={17}/></span>
       <div><p>{title}</p><strong>{value}</strong><small>{note}</small></div>

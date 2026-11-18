@@ -36,6 +36,10 @@ This version stores its records in ordinary browser localStorage. Each browser a
 
 The dashboard uses a new storage key. It leaves data in the earlier encrypted planner untouched and does not import those records. Export or back up the earlier planner before deploying this version if you need to retain access to those records.
 
+## Private budgets
+
+Each person has their own budget categories and limits. A custom category belongs to the person who created it (`ownerId`) and only they see it, its limit and its rates; the other person sees what was spent in it (in history and Insights) but never the limit or what's left. Wedding, My savings and Personal are shared permanent categories with a separate limit per person (`limits`). Older planners' shared categories are split into one copy per person when read. Each person can edit or delete only their own entries. This privacy is enforced by the app: both accounts can still read the shared Firestore document.
+
 ## Insights, warnings and shared expenses
 
 - Insights recaps a month or a year: income, spending, what was left over and saved, spending by category, a comparison with the period before, a 6 or 12 month trend, and highlights. Deposits into joint goals count as saved there, not spent.

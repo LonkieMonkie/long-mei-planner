@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ArrowDownLeft, ArrowUpRight, Pencil, PiggyBank, Plus, Trash2 } from 'lucide-react';
-import { isDateKey, withSharedDebt, withoutEntry, PEOPLE, PERSONAL_CATEGORY_ID, SAVINGS_CATEGORY_ID, WEDDING_CATEGORY_ID, categoryColor, dateFromKey, contribution, debtFromFields, decimalUnits, entryContribution, entryFromFields, incomeSplits, entryTime, localDate, localTime, money, shortDate, savingsRule, setJointBalance, settleDebt } from './model.js';
+import { isDateKey, limitFor, visibleCategories, withSharedDebt, withoutEntry, PEOPLE, PERSONAL_CATEGORY_ID, SAVINGS_CATEGORY_ID, WEDDING_CATEGORY_ID, categoryColor, dateFromKey, contribution, debtFromFields, decimalUnits, entryContribution, entryFromFields, incomeSplits, entryTime, localDate, localTime, money, shortDate, savingsRule, setJointBalance, settleDebt } from './model.js';
 import { ActionForm, ErrorBoundary, Modal } from './ui.jsx';
 import { CategoryForm } from './category-form.jsx';
 import { EVENT_COLORS, REPEATS, deleteEvent, deleteEventCategory, editEvent, eventCategoryFromFields, eventFromFields, occurrenceIndex } from './events.js';
@@ -14,20 +14,24 @@ function EntryForm({ state, item, date, person, me, weddingDeposit = false, clos
   const category = state.categories.find(item => item.id === categoryId);
   const { rate, goalId } = savingsRule(category, personId, state.goals, item);
   const [initialTime] = useState(() => item ? entryTime(item) : localTime());
-  const [shares, setShares] = useState(() => initialShares(state, personId, item));
+  // Only the entry person's own categories (plus the shared permanent ones) are offered.
+  const own = { ...state, categories: visibleCategories(state, personId) };
+  const [shares, setShares] = useState(() => initialShares({ ...state, categories: visibleCategories(state, personId) }, personId, item));
   const [shared, setShared] = useState(Boolean(item?.shared));
   const [sharePct, setSharePct] = useState(item?.shared ? String(item.shared.rate / 100) : '50');
   let units = 0, projected = 0;
   try { units = decimalUnits(amount || '0'); projected = contribution(units, rate); } catch { /* Invalid amounts are reported on submit. */ }
   function choosePerson(id) {
     setPersonId(id);
-    setShares(initialShares(state, id, item));
+    const visible = visibleCategories(state, id);
+    setShares(initialShares({ ...state, categories: visible }, id, item));
+    if (!visible.some(row => row.id === categoryId)) setCategoryId('');
   }
   function submit(fields) {
     let rates = {};
     if (type === 'income') {
-      rates = shareRates(state, shares);
-      fields = { ...fields, splits: JSON.stringify(state.categories.filter(c => shares[c.id]?.on && c.id !== PERSONAL_CATEGORY_ID).map(c => ({ categoryId: c.id, rate: rates[c.id] }))) };
+      rates = shareRates(own, shares);
+      fields = { ...fields, splits: JSON.stringify(own.categories.filter(c => shares[c.id]?.on && c.id !== PERSONAL_CATEGORY_ID).map(c => ({ categoryId: c.id, rate: rates[c.id] }))) };
     }
     if (type === 'expense' && shared && !weddingDeposit) {
       let rate;
@@ -48,7 +52,7 @@ function EntryForm({ state, item, date, person, me, weddingDeposit = false, clos
     }, item ? 'Entry updated' : 'Entry saved');
     close();
   }
-  const splitTotal = type === 'income' ? tickedTotal(state, shares) : 0;
+  const splitTotal = type === 'income' ? tickedTotal(own, shares) : 0;
   return <ActionForm onSave={submit} cancel={close} disabled={!(splitTotal <= 10_000)} label={item ? 'Save changes' : weddingDeposit ? 'Save deposit' : 'Save entry'}>
     {!weddingDeposit && <div className="segmented" aria-label="Entry type">
       <button type="button" aria-pressed={type === 'income'} onClick={() => setType('income')}><ArrowDownLeft size={16}/> Income</button>
@@ -65,14 +69,14 @@ function EntryForm({ state, item, date, person, me, weddingDeposit = false, clos
     </div>
     {weddingDeposit ? <input type="hidden" name="categoryId" value={WEDDING_CATEGORY_ID}/> : type === 'income'
       ? <label key="income">Income source (optional)<input name="source" defaultValue={item?.type === 'income' && item.source !== 'Income' ? item.source : ''} placeholder="e.g. Paycheck" maxLength={100}/></label>
-      : <label key="expense">Budget category<select name="categoryId" value={categoryId} onChange={e => setCategoryId(e.target.value)} required><option value="" disabled>Select category</option>{state.categories.map(category => <option value={category.id} key={category.id}>{category.name}</option>)}</select></label>}
+      : <label key="expense">Budget category<select name="categoryId" value={categoryId} onChange={e => setCategoryId(e.target.value)} required><option value="" disabled>Select category</option>{own.categories.map(category => <option value={category.id} key={category.id}>{category.name}</option>)}</select></label>}
     <label>Amount ($)<input name="amount" type="number" step="0.01" min="0.01" max="1000000000" placeholder="0.00" value={amount} onChange={e => setAmount(e.target.value)} required/></label>
     {type === 'expense' && category && <div className="contribution-preview"><PiggyBank size={19}/><span>
       {PEOPLE.find(p => p.id === personId).name}’s category rate · {rate / 100}%{goalId && ' to ' + state.goals.find(g => g.id === goalId)?.name}
     </span><strong>{money(projected)}</strong></div>}
     {type === 'expense' && !weddingDeposit && <SharedExpense {...{ shared, setShared, sharePct, setSharePct, units, item, debts: state.debts }}
       payer={PEOPLE.find(p => p.id === personId)} other={PEOPLE.find(p => p.id !== personId)}/>}
-    {type === 'income' && <IncomeSplit state={state} shares={shares} setShares={setShares} units={units} person={PEOPLE.find(p => p.id === personId)}/>}
+    {type === 'income' && <IncomeSplit state={own} shares={shares} setShares={setShares} units={units} person={PEOPLE.find(p => p.id === personId)}/>}
     {type === 'income' && item?.type === 'income' && !item.splits && entryContribution(item) > 0 && <p className="field-help">Saving this as income will reverse its previous {money(entryContribution(item))} savings contribution.</p>}
   </ActionForm>;
 }
@@ -182,7 +186,7 @@ export function Dialogs({ modal, state, totals, me, close, save, onEventSaved })
   const titles = {
     entry: item ? 'Edit entry' : 'Add an entry',
     'wedding-deposit': 'Add a deposit', saving: item ? 'Edit savings record' : modal.direction === 'out' ? 'Take money out' : 'Add a deposit', 'delete-saving': 'Delete savings record?',
-    category: item ? item.name + ' settings' : 'Add a budget category', limit: 'Edit budget limit',
+    category: item ? item.name + ' settings' : 'Add a budget category', limit: 'Set budget', 'delete-category': 'Delete category?',
     balance: 'Edit joint balance', goal: item ? 'Edit savings goal' : 'Add a savings goal',
     event: item ? 'Edit event' : 'Add event', 'event-categories': 'Event categories', 'delete-event': item?.repeat ? 'Delete repeating event?' : 'Delete event?', 'delete-entry': 'Delete entry?',
     debt: 'Log a debt', 'settle-debt': 'Confirm payment?',
@@ -203,13 +207,25 @@ export function Dialogs({ modal, state, totals, me, close, save, onEventSaved })
       }}><p className="field-help">Delete this {item.amount < 0 ? 'withdrawal of' : 'deposit of'} {money(Math.abs(item.amount))} from {PEOPLE.find(p => p.id === item.personId)?.name}’s savings? The balance updates right away.</p></ActionForm>;
       break;
     case 'category':
-      content = <CategoryForm {...{ item, state, done, close }}/>;
+      content = <CategoryForm {...{ item, state, done, close, me }}/>;
       break;
     case 'limit':
       content = <ActionForm cancel={close} label="Save limit" onSave={fields => {
-        const limit = decimalUnits(fields.limit);
-        done(current => ({ ...current, categories: current.categories.map(category => category.id === item.id ? { ...category, limit } : category) }), 'Budget limit updated');
-      }}><label>{item.name} monthly limit ($)<input name="limit" type="number" min="0" max="1000000000" step="0.01" defaultValue={item.limit / 100} required autoFocus/></label></ActionForm>;
+        const limit = decimalUnits(fields.limit || '0');
+        // A private category has one limit; a shared permanent one keeps a limit per person.
+        done(current => ({ ...current, categories: current.categories.map(category => category.id !== item.id ? category
+          : category.ownerId || !me ? { ...category, limit } : { ...category, limits: { ...category.limits, [me]: limit } }) }), 'Budget updated');
+      }}><label>{item.name} monthly budget ($)<input name="limit" type="number" min="0" max="1000000000" step="0.01" defaultValue={limitFor(item, me) / 100 || ''} placeholder="0.00" autoFocus/></label>
+        <p className="field-help">{item.ownerId ? 'Only you can see this budget.' : `${item.name} is shared, but your budget for it is yours alone.`} Leave it at 0 for no budget.</p></ActionForm>;
+      break;
+    case 'delete-category':
+      content = <ActionForm cancel={close} label="Delete category" onSave={() => {
+        done(current => {
+          if (!current.categories.some(category => category.id === item.id)) throw new Error('This category was already deleted.');
+          return { ...current, categories: current.categories.filter(category => category.id !== item.id) };
+        }, `${item.name} deleted`);
+      }}><p className="field-help">Delete <b>{item.name}</b>? {state.entries.some(entry => entry.categoryId === item.id)
+        ? 'Past expenses stay in your history and Insights under its name; you just can’t add new ones to it.' : 'It has no expenses yet.'}</p></ActionForm>;
       break;
     case 'balance':
       content = <ActionForm cancel={close} label="Save balance" onSave={fields => {

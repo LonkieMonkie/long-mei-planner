@@ -74,6 +74,69 @@ export const isWeddingName = name => name.trim().toLowerCase() === 'wedding';
 export const isPersonalName = name => name.trim().toLowerCase() === 'personal';
 export const isSavingsName = name => ['my savings', 'savings'].includes(name.trim().toLowerCase());
 export const isPermanentCategory = id => [WEDDING_CATEGORY_ID, PERSONAL_CATEGORY_ID, SAVINGS_CATEGORY_ID].includes(id);
+
+// Budget categories are private: a custom category belongs to one person (ownerId) and only
+// that person sees it, its limit and its settings. The permanent categories (Wedding, My savings,
+// Personal) are shared, but each person keeps their own limit for them in `limits`.
+// This privacy is enforced by the app, not by the database.
+export const limitFor = (category, personId) => category.ownerId ? category.limit ?? 0
+  : personId ? category.limits?.[personId] ?? category.limit ?? 0
+  : Object.values(category.limits ?? {}).reduce((sum, value) => sum + value, 0) || (category.limit ?? 0);
+export const visibleCategories = (state, personId) => personId
+  ? state.categories.filter(category => !category.ownerId || category.ownerId === personId)
+  : state.categories;
+export const canUseCategory = (category, personId) => !category.ownerId || category.ownerId === personId;
+
+// One person's budget for a month: their categories, what they spent in each, and their limits.
+// Older planners had one shared list of custom categories. Each becomes one copy per person
+// (the first person keeps the original id, the other gets `<id>-<person>`), entries and income
+// splits move to their person's copy, and permanent categories get a limit per person. The
+// result is the same on every device, so both phones agree before anything is saved.
+function privatizeCategories(state) {
+  const ids = PEOPLE.map(person => person.id);
+  const copyId = (id, personId) => personId === ids[0] ? id : `${id}-${personId}`;
+  const remap = new Map();
+  state.categories = state.categories.flatMap(category => {
+    if (isPermanentCategory(category.id)) {
+      if (!category.limits) category.limits = Object.fromEntries(ids.map(id => [id, category.limit ?? 0]));
+      delete category.limit;
+      return [category];
+    }
+    if (ids.includes(category.ownerId)) return [category];
+    return ids.map(personId => {
+      const id = copyId(category.id, personId);
+      remap.set(category.id + '|' + personId, id);
+      const copy = { ...category, id, ownerId: personId, limit: category.limit ?? 0 };
+      for (const key of ['savingsRates', 'incomeShares']) {
+        if (category[key]?.[personId]) copy[key] = { [personId]: category[key][personId] }; else delete copy[key];
+      }
+      return copy;
+    });
+  });
+  if (!remap.size) return;
+  state.entries = state.entries.map(entry => {
+    const moved = remap.get(entry.categoryId + '|' + entry.personId);
+    const splits = entry.splits?.map(split => ({ ...split, categoryId: remap.get(split.categoryId + '|' + entry.personId) ?? split.categoryId }));
+    return { ...entry, ...(moved ? { categoryId: moved } : {}), ...(splits ? { splits } : {}) };
+  });
+}
+
+export function personalBudget(state, month, personId) {
+  const categories = visibleCategories(state, personId);
+  const spentByCategory = new Map();
+  const fundedByCategory = new Map();
+  let spent = 0;
+  for (const entry of state.entries) {
+    if (!entry.date.startsWith(month + '-') || (personId && entry.personId !== personId)) continue;
+    if (entry.type === 'expense') {
+      spentByCategory.set(entry.categoryId, (spentByCategory.get(entry.categoryId) ?? 0) + entry.amount);
+      if (categories.some(category => category.id === entry.categoryId)) spent += entry.amount;
+    }
+    for (const split of entry.splits ?? []) fundedByCategory.set(split.categoryId, (fundedByCategory.get(split.categoryId) ?? 0) + split.amount);
+  }
+  const limit = category => limitFor(category, personId);
+  return { categories, spentByCategory, fundedByCategory, spent, budgeted: categories.reduce((sum, category) => sum + limit(category), 0), limit };
+}
 export function reservedNameError(name) {
   if (isWeddingName(name)) return 'Wedding is already a permanent category.';
   if (isPersonalName(name)) return 'Personal is already a permanent category.';
@@ -111,14 +174,14 @@ export function savingsRule(category, personId, goals, previous) {
 
 // Turns the ticked categories of an income form into stored splits. Each share is rounded
 // to the cent on its own; Wedding's share also counts toward the Wedding goal.
-export function incomeSplits(raw, amount, state) {
+export function incomeSplits(raw, amount, state, personId) {
   if (!raw) return [];
   const chosen = typeof raw === 'string' ? JSON.parse(raw) : raw;
   const seen = new Set();
   const splits = [];
   for (const { categoryId, rate } of chosen) {
     const category = state.categories.find(item => item.id === categoryId);
-    if (!category || categoryId === PERSONAL_CATEGORY_ID || seen.has(categoryId)) continue;
+    if (!category || categoryId === PERSONAL_CATEGORY_ID || seen.has(categoryId) || (personId && !canUseCategory(category, personId))) continue;
     if (!Number.isInteger(rate) || rate < 0 || rate > 10_000) throw new Error(`Enter a share from 0% to 100% for ${category.name}.`);
     seen.add(categoryId);
     if (!rate) continue;
@@ -145,13 +208,14 @@ export function entryFromFields(fields, state, previous, now = new Date().toISOS
   const source = type === 'expense' ? category?.name : String(fields.source ?? '').trim().slice(0, 100) || 'Income';
   if (!person || !['income', 'expense'].includes(type)) throw new Error('Choose who is adding this.');
   if (!source) throw new Error('Choose a budget category.');
+  if (type === 'expense' && !canUseCategory(category, person.id)) throw new Error('That category belongs to the other profile. Choose one of yours.');
   const amount = decimalUnits(fields.amount);
   if (amount <= 0) throw new Error('Enter an amount greater than zero.');
   if (!isDateKey(fields.date)) throw new Error('Choose a valid transaction date.');
   const time = fields.time || (previous ? entryTime(previous) : localTime(new Date(now)));
   if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time)) throw new Error('Choose a valid transaction time.');
   const allocation = type === 'expense' ? savingsRule(category, person.id, state.goals, previous) : {};
-  const splits = type === 'income' ? incomeSplits(fields.splits, amount, state) : [];
+  const splits = type === 'income' ? incomeSplits(fields.splits, amount, state, person.id) : [];
   // A shared expense records the other person's share; withSharedDebt turns it into a debt.
   let shared = null;
   if (type === 'expense' && fields.sharedRate !== undefined && fields.sharedRate !== '') {
@@ -200,7 +264,7 @@ export function summarize(state, month) {
     allocated += amount;
     person.allocated += amount;
   }
-  const budgeted = state.categories.reduce((sum, c) => sum + c.limit, 0);
+  const budgeted = state.categories.reduce((sum, c) => sum + limitFor(c), 0);
   return {
     people, goals, spentByCategory, fundedByCategory, income, spent, allocated, budgeted, totalContributions,
     jointBalance: state.savingsAdjustment + totalContributions,
@@ -362,6 +426,7 @@ export function readState(storage) {
   state.events = state.events.map(normalizeEvent);
   state.eventCategories = normalizeEventCategories(state.eventCategories);
   for (const goal of state.goals) if (goal.targetDate !== undefined && !isDateKey(goal.targetDate)) delete goal.targetDate;
+  privatizeCategories(state);
   for (const category of state.categories) {
     const shares = Object.fromEntries(PEOPLE.map(({ id }) => [id, category.incomeShares?.[id]]).filter(([, rate]) => Number.isInteger(rate) && rate > 0 && rate <= 10_000));
     if (Object.keys(shares).length) category.incomeShares = shares; else delete category.incomeShares;

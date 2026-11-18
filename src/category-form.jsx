@@ -76,32 +76,35 @@ function CategoryColorPicker({ initial }) {
   </fieldset>;
 }
 
-export function CategoryForm({ item, state, done, close }) {
+export function CategoryForm({ item, state, done, close, me }) {
   const wedding = item?.id === WEDDING_CATEGORY_ID;
+  // Signed in, you only see and change your own rates; the other person's are kept as they are.
+  const people = me ? PEOPLE.filter(person => person.id === me) : PEOPLE;
   return <ActionForm cancel={close} label={item ? 'Save category' : 'Add category'} onSave={fields => {
     const color = parseAccent(fields.color);
     if (!color) throw new Error('Enter a six-digit hex color.');
     const name = fields.name?.trim();
     if (!item && !name) throw new Error('Enter a category name.');
     if (!item && reservedNameError(name)) throw new Error(reservedNameError(name));
-    const savingsRates = Object.fromEntries(PEOPLE.map(({ id }) => [id, decimalUnits(fields[id] || '0', 10_000)]));
+    const savingsRates = { ...item?.savingsRates, ...Object.fromEntries(people.map(({ id }) => [id, decimalUnits(fields[id] || '0', 10_000)])) };
     const personal = item?.id === PERSONAL_CATEGORY_ID;
-    const incomeShares = personal ? undefined : Object.fromEntries(PEOPLE.map(({ id }) => [id, decimalUnits(fields['share-' + id] || '0', 10_000)]));
+    const incomeShares = personal ? undefined : { ...item?.incomeShares, ...Object.fromEntries(people.map(({ id }) => [id, decimalUnits(fields['share-' + id] || '0', 10_000)])) };
     const update = { color, savingsRates, incomeShares, savingsGoalId: wedding ? item.savingsGoalId : fields.savingsGoalId };
     done(current => ({
       ...current,
       categories: item
         ? current.categories.map(category => category.id === item.id ? { ...category, ...update } : category)
-        : [...current.categories, { id: crypto.randomUUID(), name, limit: 0, icon: 'tag', tone: 'indigo', ...update }],
+        : [...current.categories, { id: crypto.randomUUID(), name, limit: 0, icon: 'tag', tone: 'indigo', ...update, ...(me ? { ownerId: me } : {}) }],
     }), item ? 'Category settings saved' : 'Category added');
   }}>
     {!item && <label>Category name<input name="name" autoFocus required maxLength={70} placeholder="e.g. Traveling"/></label>}
+    {!item && me && <p className="field-help">This category is private to you. Your partner sees what you spend in it, but not your budget for it.</p>}
     <CategoryColorPicker initial={item ? categoryColor(item) : DEFAULT_ACCENT}/>
-    <div className="form-row">{PEOPLE.map(person => <label key={person.id}>{person.name} savings (%)
+    <div className="form-row">{people.map(person => <label key={person.id}>{me ? 'Your' : person.name} savings (%)
       <input type="number" name={person.id} min="0" max="100" step="0.01" defaultValue={(item?.savingsRates?.[person.id] ?? 0) / 100}/>
     </label>)}</div>
     {item?.id === PERSONAL_CATEGORY_ID ? <p className="field-help">Personal is permanent. It receives whatever share of each income isn’t ticked for other budgets.</p>
-      : <div className="form-row">{PEOPLE.map(person => <label key={person.id}>{person.name} share of income (%)
+      : <div className="form-row">{people.map(person => <label key={person.id}>{me ? 'Your' : person.name} share of income (%)
       <input type="number" name={'share-' + person.id} min="0" max="100" step="0.01" defaultValue={(item?.incomeShares?.[person.id] ?? 0) / 100}/>
     </label>)}</div>}
     {wedding ? <p className="field-help">Wedding is permanent and adds to the Wedding goal in Joint Savings.</p> : <label>Joint savings goal<select name="savingsGoalId" defaultValue={item?.savingsGoalId || state.goals[0]?.id}>

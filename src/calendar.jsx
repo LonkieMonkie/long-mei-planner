@@ -39,7 +39,7 @@ function AgendaDetails({ item, label }) {
   </>;
 }
 
-function AgendaItem({ item, open }) {
+function AgendaItem({ item, open, me }) {
   const { Icon, tone, label } = styles[item.kind];
   const { entry, event } = item;
   return <article className="agenda-event calendar-agenda-item">
@@ -48,7 +48,7 @@ function AgendaItem({ item, open }) {
       <h3>{item.title}</h3>
       <AgendaDetails item={item} label={label}/>
     </div>
-    {entry && <button className="icon-btn" aria-label={`Edit ${item.title} entry`} onClick={() => open({ kind: 'entry', item: entry })}><Pencil size={15}/></button>}
+    {entry && (!me || entry.personId === me) && <button className="icon-btn" aria-label={`Edit ${item.title} entry`} onClick={() => open({ kind: 'entry', item: entry })}><Pencil size={15}/></button>}
     {event && <button className="icon-btn" aria-label={`Edit event ${item.title}`} onClick={() => open({ kind: 'event', item: event, date: item.date })}><Pencil size={15}/></button>}
     {event && <button className="icon-btn danger" aria-label={`Delete event ${item.title}`} onClick={() => open({ kind: 'delete-event', item: event, date: item.date })}><Trash2 size={15}/></button>}
   </article>;
@@ -62,7 +62,7 @@ function readHidden() {
 }
 const categoryKey = (event, state) => state.eventCategories.some(category => category.id === event.categoryId) ? event.categoryId : NONE;
 
-export function CalendarView({ state, open, month, setMonth, selected, setSelected }) {
+export function CalendarView({ state, me, open, month, setMonth, selected, setSelected }) {
   const today = localDate();
   const days = calendarDays(month);
   const [hidden, setHidden] = useState(readHidden);
@@ -115,7 +115,7 @@ export function CalendarView({ state, open, month, setMonth, selected, setSelect
     </section>
     <section className="card agenda-card">
       <PanelHeading title={shortDate(selected)} subtitle="Day’s agenda"/>
-      {!events.length ? <Empty icon={CalendarDays}>No activity on this day.</Empty> : events.map(item => <AgendaItem {...{ item, open }} key={item.id}/>)}
+      {!events.length ? <Empty icon={CalendarDays}>No activity on this day.</Empty> : events.map(item => <AgendaItem {...{ item, open, me }} key={item.id}/>)}
       <div className="agenda-actions">
         <button className="btn secondary small" onClick={() => open({ kind: 'event', date: selected })}><Plus size={15}/> Add event</button>
         <button className="btn secondary small" onClick={() => open({ kind: 'entry', date: selected })}><Plus size={15}/> Add entry</button>

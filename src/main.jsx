@@ -11,7 +11,7 @@ import { Dialogs } from './dialogs.jsx';
 import { ExportCard, Settings, StorageCard, TreeSettings, VersionCard } from './settings.jsx';
 import { accentStyles } from './appearance.js';
 import { PlantPair } from './plants.jsx';
-import { PEOPLE, STORAGE_KEY, categoryColor, entryContribution, entryTime, goalShares, freshData, localDate, readState, summarize } from './model.js';
+import { PEOPLE, STORAGE_KEY, categoryColor, entryContribution, entryTime, goalShares, freshData, limitFor, visibleCategories, localDate, readState, summarize } from './model.js';
 import { workbook } from './excel.js';
 import { repeatSummary } from './events.js';
 import { AccountCard, AccountGate, ProfilePictureCard } from './account.jsx';
@@ -46,7 +46,7 @@ function loadDashboard() {
   }
 }
 
-function exportExcel(state, totals) {
+function exportExcel(state, totals, me) {
   const names = new Map(PEOPLE.map(p => [p.id, p.name]));
   const goals = new Map(state.goals.map(g => [g.id, g.name]));
   const categories = new Map(state.categories.map(c => [c.id, c.name]));
@@ -57,7 +57,8 @@ function exportExcel(state, totals) {
     ] },
     { name: 'Budget categories', rows: [
       ['Category', 'Monthly limit (USD)', 'Color', 'Long savings %', 'Mei savings %', 'Long income share %', 'Mei income share %', 'Joint goal'],
-      ...state.categories.map(category => [category.name, category.limit / 100, categoryColor(category), (category.savingsRates?.long ?? 0) / 100, (category.savingsRates?.mei ?? 0) / 100, (category.incomeShares?.long ?? 0) / 100, (category.incomeShares?.mei ?? 0) / 100, goals.get(category.savingsGoalId) ?? '']),
+      // Only the exporting person's own categories and limits: the other profile's stay private.
+      ...visibleCategories(state, me).map(category => [category.name, limitFor(category, me) / 100, categoryColor(category), (category.savingsRates?.long ?? 0) / 100, (category.savingsRates?.mei ?? 0) / 100, (category.incomeShares?.long ?? 0) / 100, (category.incomeShares?.mei ?? 0) / 100, goals.get(category.savingsGoalId) ?? '']),
     ] },
     { name: 'Joint savings', rows: [
       ['Goal', 'Target (USD)', 'Long (USD)', 'Mei (USD)', 'Total (USD)'],
@@ -243,13 +244,13 @@ function App() {
       <div className="page-body">
         <ErrorBoundary resetKey={active}>
         {active === 'dashboard' && <Dashboard state={state} totals={totals} me={session.me} open={setModal} navigate={navigate}/>}
-        {active === 'budget' && <Budget {...{ state, totals, month, save, edit, remove }} open={setModal}/>}
-        {active === 'calendar' && <CalendarView state={state} open={setModal} month={calendarMonth} setMonth={setCalendarMonth} selected={selectedDay} setSelected={setSelectedDay}/>}
-        {active === 'savings' && <Savings {...{ state, totals, edit, remove }} open={setModal}/>}
+        {active === 'budget' && <Budget me={session.me} {...{ state, totals, month, save, edit, remove }} open={setModal}/>}
+        {active === 'calendar' && <CalendarView me={session.me} state={state} open={setModal} month={calendarMonth} setMonth={setCalendarMonth} selected={selectedDay} setSelected={setSelectedDay}/>}
+        {active === 'savings' && <Savings me={session.me} {...{ state, totals, edit, remove }} open={setModal}/>}
         {active === 'insights' && <Insights state={state}/>}
         {active === 'my-savings' && <MySavings state={state} me={session.me} open={setModal} editEntry={edit}/>}
         {active === 'debts' && <DebtTracker debts={state.debts} open={setModal}/>}
-        {active === 'settings' && <>{cloudOn && <AccountCard session={session} signOut={signOut}/>}<ProfilePictureCard me={session.me} avatars={avatars} setAvatar={setAvatar} notify={message => setNotice({ message })}/><Settings key={state.accentColor} accent={state.accentColor} save={save}/><TreeSettings key={state.tree.kind + state.tree.perMeter} tree={state.tree} save={save}/><ExportCard onExport={() => exportExcel(state, totals)}/><StorageCard json={cloudOn ? remote.current?.json : (() => { try { return localStorage.getItem(STORAGE_KEY); } catch { return ''; } })()} entries={state.entries} synced={cloudOn}/><VersionCard/></>}
+        {active === 'settings' && <>{cloudOn && <AccountCard session={session} signOut={signOut}/>}<ProfilePictureCard me={session.me} avatars={avatars} setAvatar={setAvatar} notify={message => setNotice({ message })}/><Settings key={state.accentColor} accent={state.accentColor} save={save}/><TreeSettings key={state.tree.kind + state.tree.perMeter} tree={state.tree} save={save}/><ExportCard onExport={() => exportExcel(state, totals, session.me)}/><StorageCard json={cloudOn ? remote.current?.json : (() => { try { return localStorage.getItem(STORAGE_KEY); } catch { return ''; } })()} entries={state.entries} synced={cloudOn}/><VersionCard/></>}
         </ErrorBoundary>
       </div>
     </main>
