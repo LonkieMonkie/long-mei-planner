@@ -91,7 +91,9 @@ export function Dashboard({ state, totals, me, open, navigate }) {
       <div className="banner-plants"><PlantPair/></div>
     </section>
     <div className="stats-grid">
-      <Stat icon={ArrowDownLeft} tone="mint" label="Total income" value={totals.income} caption="This month · both profiles"/>
+      {/* Signed in, income is the signed-in person's own; otherwise both profiles combined. */}
+      {name ? <Stat icon={ArrowDownLeft} tone="mint" label="Your income" value={totals.people[me].income} caption={`This month · ${name} only`}/>
+        : <Stat icon={ArrowDownLeft} tone="mint" label="Total income" value={totals.income} caption="This month · both profiles"/>}
       <Stat icon={Wallet} tone="rose" label="Total spending" value={totals.spent} caption={`Of ${money(totals.budgeted, true)} budgeted this month`}/>
       <Stat icon={PiggyBank} tone="indigo" label="Joint savings" value={totals.jointBalance} caption="Across all saved contributions"/>
     </div>

@@ -1,6 +1,9 @@
 // What changed in each release, newest first. Add an entry and bump "version" in
 // package.json together; a test checks that they match.
 export const CHANGELOG = [
+  { version: '2.11.2', date: '2026-11-17', changes: [
+    'The dashboard’s income figure now shows only the signed-in person’s income for the month.',
+  ] },
   { version: '2.11.1', date: '2026-11-17', changes: [
     'Fixed: typing a share over 100% or with more than two decimals in the income split no longer makes the app go blank.',
     'If a screen or form ever hits an error, it now shows a message with Try again and Reload instead of a blank page.',
