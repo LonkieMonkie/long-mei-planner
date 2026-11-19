@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, Folder, FolderPlus, GripVertical, LockKeyhole, Pencil, Plus, SlidersHorizontal, Trash2 } from 'lucide-react';
 import { warningLevel } from './insights.js';
-import { PEOPLE, budgetGroups, categoryColor, money, moveCategory } from './model.js';
+import { PEOPLE, budgetGroups, categoryColor, money, moveCategory, paycheckFolder } from './model.js';
 import { CategoryIcon, InlineName, Progress, WARN_COLOR, WarningBadge } from './ui.jsx';
 
 const FOLDER_NOTES = {
-  joint: 'Goes to Joint Savings',
-  saving: 'Goes to your own savings',
-  checking: 'Everyday money · gets the rest of each income',
+  joint: 'Shared · goes to joint savings',
+  saving: 'Goes to your savings',
+  checking: 'Everyday money',
 };
 const COLLAPSED_KEY = 'our-little-life:collapsed-folders';
 
@@ -200,7 +200,7 @@ export function BudgetBoard({ state, budget, me, save, open }) {
                 <div>{folder.locked
                   ? <span className="rename"><strong>{folder.name}</strong><LockKeyhole size={12} aria-label="Built-in folder"/></span>
                   : <InlineName name={folder.name} save={name => save(current => ({ ...current, folders: current.folders.map(item => item.id === folder.id ? { ...item, name: name.slice(0, 40) } : item) }), 'Folder renamed')}/>}
-                  <small>{folder.kind ? FOLDER_NOTES[folder.kind] : `${categories.length} ${categories.length === 1 ? 'category' : 'categories'}`}</small></div>
+                  <small>{folder.kind === 'checking' && paycheckFolder(state, owner) === folder.id ? 'Everyday money · paycheck lands here' : FOLDER_NOTES[folder.kind]}</small></div>
               </div>
               <div className="budget-cell" role="cell" data-label="Budget"><span className="folder-sum" title="Adds up the budgets inside">{money(limit)}</span></div>
               <div className="budget-cell" role="cell" data-label={saving ? 'Saved' : 'Spent'}><span className="folder-sum">{money(spent)}</span></div>

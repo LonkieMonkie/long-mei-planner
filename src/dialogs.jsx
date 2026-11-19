@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ArrowDownLeft, ArrowUpRight, Folder, Pencil, PiggyBank, Plus, Trash2 } from 'lucide-react';
-import { REST, budgetGroups, categoryKind, deleteFolder, folderFromFields, isDateKey, jointDepositCategory, limitFor, visibleCategories, withSharedDebt, withoutEntry, PEOPLE, categoryColor, dateFromKey, contribution, debtFromFields, decimalUnits, entryContribution, entryFromFields, incomeSplits, entryTime, localDate, localTime, money, shortDate, savingsRule, setJointBalance, settleDebt } from './model.js';
+import { FOLDER_KINDS, REST, budgetGroups, categoryKind, deleteFolder, folderBalance, folderFromFields, paycheckFolder, transferFromFields, visibleFolders, isDateKey, jointDepositCategory, limitFor, visibleCategories, withSharedDebt, withoutEntry, PEOPLE, categoryColor, dateFromKey, contribution, debtFromFields, decimalUnits, entryContribution, entryFromFields, incomeSplits, entryTime, localDate, localTime, money, shortDate, savingsRule, setJointBalance, settleDebt } from './model.js';
 import { ActionForm, ErrorBoundary, Modal } from './ui.jsx';
 import { CategoryForm } from './category-form.jsx';
 import { EVENT_COLORS, REPEATS, deleteEvent, deleteEventCategory, editEvent, eventCategoryFromFields, eventFromFields, occurrenceIndex } from './events.js';
@@ -76,10 +76,11 @@ function EntryForm({ state, item, date, person, me, close, save }) {
           {categories.map(category => <option value={category.id} key={category.id}>{category.name}</option>)}</optgroup>)}</select></label>}
     <label>Amount ($)<input name="amount" type="number" step="0.01" min="0.01" max="1000000000" placeholder="0.00" value={amount} onChange={e => setAmount(e.target.value)} required/></label>
     {type === 'expense' && category && <div className="contribution-preview"><PiggyBank size={19}/><span>
-      {goesTo === 'saving' ? <>In <b>Personal saving</b> · all of it goes to {PEOPLE.find(p => p.id === personId).name}’s savings</>
-        : goesTo === 'joint' ? <>In <b>Joint saving</b> · all of it goes to {state.goals.find(g => g.id === goalId)?.name ?? 'Joint Savings'}</>
+      {goesTo === 'saving' ? <>Personal saving · all of it goes to <b>{state.folders?.find(f => f.id === category.folderId)?.name ?? 'savings'}</b></>
+        : goesTo === 'joint' ? <>Joint saving · all of it goes to <b>{state.goals.find(g => g.id === goalId)?.name ?? 'Joint Savings'}</b></>
         : <>{PEOPLE.find(p => p.id === personId).name}’s category rate · {rate / 100}%{goalId && ' to ' + state.goals.find(g => g.id === goalId)?.name}</>}
     </span><strong>{money(goesTo === 'saving' ? units : projected)}</strong></div>}
+    {type === 'expense' && category && <p className="field-help paid-from">Paid from <b>{state.folders?.find(f => f.id === (item?.categoryId === categoryId && item?.from ? item.from : kind === 'checking' ? category.folderId : paycheckFolder(state, personId)))?.name ?? 'Personal checking'}</b>.</p>}
     {type === 'expense' && <SharedExpense {...{ shared, setShared, sharePct, setSharePct, units, item, debts: state.debts }}
       payer={PEOPLE.find(p => p.id === personId)} other={PEOPLE.find(p => p.id !== personId)}/>}
     {type === 'income' && <IncomeSplit state={own} personId={personId} shares={shares} setShares={setShares} units={units} person={PEOPLE.find(p => p.id === personId)}/>}
@@ -135,7 +136,7 @@ function shareRates(state, shares) {
   }));
 }
 
-const FOLDER_NOTES = { joint: 'to Joint Savings', saving: 'to My Savings', checking: 'everyday money' };
+const FOLDER_NOTES = { joint: 'joint', saving: 'saving', checking: 'checking' };
 
 // The income split, grouped by the person's folders. A folder has no percentage of its own:
 // its row shows what its ticked categories add up to. The unticked rest lands in Personal checking.
@@ -163,6 +164,7 @@ function IncomeSplit({ state, personId, shares, setShares, units, person }) {
   }
   const restRate = valid ? 10_000 - totalRate : null;
   const groups = budgetGroups(state, personId);
+  const paycheck = state.folders?.find(folder => folder.id === paycheckFolder(state, personId)) ?? { id: null, name: 'Personal checking' };
   const restRow = <div className="split-row on personal" key="rest">
     <span className="split-check"><span className="split-lock" aria-hidden="true"/>The rest<small>not ticked</small></span>
     <span className="split-pct"><span className="split-rest">{valid ? restRate / 100 : '—'}</span>%</span>
@@ -177,10 +179,10 @@ function IncomeSplit({ state, personId, shares, setShares, units, person }) {
   </div>;
   return <fieldset className="income-split">
     <legend>Split into budgets</legend>
-    <p className="field-help">Tick budgets to set their share aside for this month. Folder totals add up their ticked budgets. Whatever isn’t ticked goes to Personal checking. Percentages are saved for {person.name}.</p>
+    <p className="field-help">Tick budgets to set their share aside for this month. Folder totals add up their ticked budgets. Whatever isn’t ticked goes to {paycheck.name}. Percentages are saved for {person.name}.</p>
     <div className="split-rows">{groups.map(({ folder, categories }) => {
       const kids = categories.map(category => rows.get(category.id)).filter(Boolean);
-      const isChecking = folder?.kind === 'checking';
+      const isChecking = folder?.id === paycheck.id;
       if (!kids.length && !isChecking) return null;
       const on = kids.filter(row => row.on && row.rate !== null);
       const rate = on.reduce((sum, row) => sum + row.rate, 0) + (isChecking && valid ? restRate : 0);
@@ -197,25 +199,60 @@ function IncomeSplit({ state, personId, shares, setShares, units, person }) {
       </div>;
     })}</div>
     {!valid ? <p className="split-total over" role="alert">{invalid.length ? `Enter a share from 0 to 100 for ${invalid.map(row => row.category.name).join(', ')}, with up to two decimals.` : `The ticked shares add up to ${totalRate / 100}%. Remove ${(totalRate - 10_000) / 100}% to save.`}</p>
-      : <p className="split-total done">{totalRate === 10_000 ? 'All 100% goes to the ticked budgets.' : !totalRate ? <>Nothing ticked, so all <strong>{money(rest)}</strong> goes to Personal checking.</> : <>Ticked budgets get <strong>{money(units - rest)}</strong> ({totalRate / 100}%). The other <strong>{money(rest)}</strong> goes to Personal checking.</>}</p>}
+      : <p className="split-total done">{totalRate === 10_000 ? 'All 100% goes to the ticked budgets.' : !totalRate ? <>Nothing ticked, so all <strong>{money(rest)}</strong> goes to {paycheck.name}.</> : <>Ticked budgets get <strong>{money(units - rest)}</strong> ({totalRate / 100}%). The other <strong>{money(rest)}</strong> goes to {paycheck.name}.</>}</p>}
   </fieldset>;
 }
 
 const FOLDER_COLORS = ['#4c8363', '#5a9ccc', '#d9a520', '#c46a8f', '#8a6cc4', '#d0703a', '#3f9c9c', '#8a94a3'];
 
-function FolderForm({ item, state, personId, done, close }) {
+const KIND_HELP = {
+  joint: 'Shared with your partner. Income shares and entries in its categories go to joint savings.',
+  saving: 'Private. Income shares and entries in its categories go to your savings.',
+  checking: 'Private. Everyday money; expenses in its categories are paid from it.',
+};
+
+function FolderForm({ item, state, personId, kind: startKind, done, close }) {
   const [color, setColor] = useState(item?.color ?? FOLDER_COLORS[4]);
+  const [kind, setKind] = useState(item?.kind ?? startKind ?? 'checking');
   return <ActionForm cancel={close} label={item ? 'Save folder' : 'Add folder'} onSave={fields => {
     done(current => {
-      const folder = folderFromFields({ ...fields, color }, current, personId, item);
+      const folder = folderFromFields({ ...fields, color, kind }, current, personId, item);
       return { ...current, folders: item ? current.folders.map(row => row.id === folder.id ? folder : row) : [...(current.folders ?? []), folder] };
     }, item ? 'Folder saved' : 'Folder added');
   }}>
-    <label>Folder name<input name="name" defaultValue={item?.name ?? ''} autoFocus required maxLength={40} placeholder="e.g. Home"/></label>
+    {item ? <p className="field-help">This is a <b>{FOLDER_KINDS[item.kind].name}</b> folder. A folder’s type can’t change, so past entries keep their meaning.</p>
+      : <fieldset className="edit-scope"><legend>Type</legend>
+        {Object.entries(FOLDER_KINDS).map(([value, { name }]) => <label key={value} className="scope-option"><input type="radio" name="kind" checked={kind === value} onChange={() => setKind(value)}/>
+          <span><strong>{name}</strong><small>{KIND_HELP[value]}</small></span></label>)}</fieldset>}
+    <label>Folder name<input name="name" defaultValue={item?.name ?? ''} autoFocus required maxLength={40} placeholder={kind === 'joint' ? 'e.g. House fund' : kind === 'saving' ? 'e.g. Emergency fund' : 'e.g. Bills account'}/></label>
     <fieldset className="folder-colors"><legend>Color</legend>
       {FOLDER_COLORS.map(value => <button type="button" key={value} className="swatch" style={{ backgroundColor: value }} aria-pressed={color === value} aria-label={`Color ${value}`} onClick={() => setColor(value)}/>)}
     </fieldset>
-    <p className="field-help">Custom folders group and total your categories. They don’t change where money goes.</p>
+    {!item && <p className="field-help">You can have as many folders of each type as you like, one for each account.</p>}
+  </ActionForm>;
+}
+
+function TransferForm({ state, item, me, from, to, done, close }) {
+  const [personId, setPersonId] = useState(item?.personId ?? me ?? 'long');
+  const folders = visibleFolders(state, personId);
+  const option = folder => <option key={folder.id} value={folder.id}>{folder.name}{folder.kind === 'joint' ? ' (joint)' : ''} · {money(folderBalance(state, folder.id))}</option>;
+  const grouped = Object.entries(FOLDER_KINDS).map(([kind, { name }]) => <optgroup key={kind} label={name}>{folders.filter(folder => folder.kind === kind).map(option)}</optgroup>);
+  return <ActionForm cancel={close} label={item ? 'Save transfer' : 'Move money'} onSave={fields => done(current => {
+    const transfer = transferFromFields(fields, current, personId, item);
+    const list = current.transfers ?? [];
+    return { ...current, transfers: item ? list.map(row => row.id === transfer.id ? transfer : row) : [transfer, ...list] };
+  }, item ? 'Transfer updated' : 'Money moved')}>
+    {!me && <label>Whose money?<select value={personId} onChange={e => setPersonId(e.target.value)}>{PEOPLE.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>}
+    <div className="form-row">
+      <label>From<select name="from" defaultValue={item?.from ?? from ?? paycheckFolder(state, personId)} required>{grouped}</select></label>
+      <label>To<select name="to" defaultValue={item?.to ?? to ?? `saving-${personId}`} required>{grouped}</select></label>
+    </div>
+    <div className="form-row">
+      <label>Date<input name="date" type="date" defaultValue={item?.date ?? localDate()} required/></label>
+      <label>Amount ($)<input name="amount" type="number" min="0.01" max="1000000000" step="0.01" defaultValue={item ? item.amount / 100 : ''} required autoFocus/></label>
+    </div>
+    <label>Note (optional)<input name="note" maxLength={100} defaultValue={item?.note} placeholder="e.g. Monthly savings"/></label>
+    <p className="field-help">A transfer moves money you already have. It isn’t income or spending.</p>
   </ActionForm>;
 }
 
@@ -231,7 +268,7 @@ export function Dialogs({ modal, state, totals, me, close, save, onEventSaved })
   const titles = {
     entry: item ? 'Edit entry' : 'Add an entry',
     'wedding-deposit': 'Add a deposit', saving: item ? 'Edit savings record' : modal.direction === 'out' ? 'Take money out' : 'Add a deposit', 'delete-saving': 'Delete savings record?',
-    category: item ? item.name + ' settings' : 'Add a budget category', folder: item ? item.name + ' folder' : 'Add a folder', 'delete-folder': 'Delete folder?', limit: 'Set budget', 'delete-category': 'Delete category?',
+    category: item ? item.name + ' settings' : 'Add a budget category', folder: item ? item.name + ' folder' : 'Add a folder', transfer: item ? 'Edit transfer' : 'Move money between folders', 'delete-transfer': 'Delete transfer?', 'delete-folder': 'Delete folder?', limit: 'Set budget', 'delete-category': 'Delete category?',
     balance: 'Edit joint balance', goal: item ? 'Edit savings goal' : 'Add a savings goal',
     event: item ? 'Edit event' : 'Add event', 'event-categories': 'Event categories', 'delete-event': item?.repeat ? 'Delete repeating event?' : 'Delete event?', 'delete-entry': 'Delete entry?',
     debt: 'Log a debt', 'settle-debt': 'Confirm payment?',
@@ -244,7 +281,14 @@ export function Dialogs({ modal, state, totals, me, close, save, onEventSaved })
       break;
     case 'wedding-deposit':
     case 'saving':
-      content = <SavingsForm {...{ state, item, me, close, save }} destination={kind === 'wedding-deposit' ? 'wedding' : 'personal'} direction={modal.direction} person={modal.person}/>;
+      content = <SavingsForm {...{ state, item, me, close, save }} destination={kind === 'wedding-deposit' ? 'wedding' : 'personal'} direction={modal.direction} person={modal.person} folderId={modal.folderId}/>;
+      break;
+    case 'transfer':
+      content = <TransferForm {...{ state, item, me, done, close }} from={modal.from} to={modal.to}/>;
+      break;
+    case 'delete-transfer':
+      content = <ActionForm cancel={close} label="Delete transfer" onSave={() => done(current => ({ ...current, transfers: (current.transfers ?? []).filter(row => row.id !== item.id) }), 'Transfer deleted')}>
+        <p className="field-help">Delete this transfer of {money(item.amount)}? Both folders’ balances go back to what they were.</p></ActionForm>;
       break;
     case 'delete-saving':
       content = <ActionForm cancel={close} label="Delete" onSave={() => {
@@ -255,7 +299,7 @@ export function Dialogs({ modal, state, totals, me, close, save, onEventSaved })
       content = <CategoryForm {...{ item, state, done, close, me }} folderId={modal.folderId}/>;
       break;
     case 'folder':
-      content = <FolderForm {...{ item, state, done, close }} personId={item?.ownerId ?? me ?? 'long'}/>;
+      content = <FolderForm {...{ item, state, done, close }} personId={item && item.ownerId !== 'shared' ? item.ownerId : me ?? 'long'} kind={modal.folderKind}/>;
       break;
     case 'delete-folder': {
       const count = state.categories.filter(category => category.folderId === item.id).length;
@@ -446,13 +490,17 @@ function DeleteEvent({ event, date, close, done }) {
 
 // One form for putting money aside: into Joint Savings (logged in the person's Joint saving
 // category for the Wedding goal) or into their own savings, where money can also be taken out.
-function SavingsForm({ state, item, me, destination, direction, person, close, save }) {
+function SavingsForm({ state, item, me, destination, direction, person, folderId: startFolder, close, save }) {
   const [where, setWhere] = useState(item ? 'personal' : destination);
   const [way, setWay] = useState(item ? (item.amount < 0 ? 'out' : 'in') : direction ?? 'in');
   const [personId, setPersonId] = useState(item?.personId ?? person ?? me ?? 'long');
   const [initialTime] = useState(() => item?.time ?? localTime());
   const name = PEOPLE.find(p => p.id === personId).name;
   const depositCategory = jointDepositCategory(state, personId);
+  // Money added or taken out by hand goes into one of your folders or a shared Joint saving folder.
+  const folders = visibleFolders(state, personId);
+  const [folderId, setFolderId] = useState(item?.folderId ?? startFolder ?? `saving-${personId}`);
+  const folder = folders.find(row => row.id === folderId) ?? folders.find(row => row.id === `saving-${personId}`);
   return <ActionForm cancel={close} label={item ? 'Save changes' : way === 'out' && where === 'personal' ? 'Take out' : 'Save deposit'} onSave={fields => {
     if (where === 'wedding') {
       save(current => {
@@ -463,21 +511,23 @@ function SavingsForm({ state, item, me, destination, direction, person, close, s
     } else {
       save(current => {
         if (item && !current.savings.some(record => record.id === item.id)) throw new Error('This record was deleted on another device. Close the form to see the latest.');
-        const record = savingsFromFields({ ...fields, personId, direction: way }, item);
+        const record = savingsFromFields({ ...fields, personId, direction: way, folderId: folder?.id }, item);
         return { ...current, savings: item ? current.savings.map(row => row.id === record.id ? record : row) : [record, ...current.savings] };
-      }, item ? 'Savings record updated' : way === 'out' ? `Taken out of ${name}’s savings` : `Added to ${name}’s savings`);
+      }, item ? 'Savings record updated' : way === 'out' ? `Taken out of ${folder?.name ?? 'savings'}` : `Added to ${folder?.name ?? 'savings'}`);
     }
     close();
   }}>
     {!item && <fieldset className="edit-scope">
       <legend>Where should this money go?</legend>
-      {[['wedding', 'Joint Savings', 'Counted toward your shared goal'], ['personal', `${name}’s savings`, 'Your own savings, shown on My Savings']].map(([value, label, hint]) =>
+      {[['wedding', 'A joint goal', 'Logged as an entry in a Joint saving category, counted toward its goal'], ['personal', 'Straight into a folder', 'Add to or take out of a saving folder']].map(([value, label, hint]) =>
         <label key={value} className="scope-option"><input type="radio" name="where" checked={where === value} onChange={() => setWhere(value)}/><span><strong>{label}</strong><small>{hint}</small></span></label>)}
     </fieldset>}
     {where === 'personal' && <div className="segmented" aria-label="Add or take out">
       <button type="button" aria-pressed={way === 'in'} onClick={() => setWay('in')}><ArrowDownLeft size={16}/> Add money</button>
       <button type="button" aria-pressed={way === 'out'} onClick={() => setWay('out')}><ArrowUpRight size={16}/> Take out</button>
     </div>}
+    {where === 'personal' && <label>Folder<select value={folder?.id ?? ''} onChange={e => setFolderId(e.target.value)}>
+      {folders.map(row => <option key={row.id} value={row.id}>{row.name}{row.kind === 'joint' ? ' (joint)' : ''} · {money(folderBalance(state, row.id))}</option>)}</select></label>}
     {!me && <label>Whose money?<select value={personId} onChange={e => setPersonId(e.target.value)}>{PEOPLE.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>}
     <div className="form-row">
       <label>Date<input name="date" type="date" defaultValue={item?.date ?? localDate()} required/></label>

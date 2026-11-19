@@ -165,7 +165,7 @@ test('an older Wedding category keeps its rates and history, and becomes a priva
   const restored = readState({ getItem: () => JSON.stringify(state) });
   const copies = restored.categories.filter(category => category.name === 'Wedding');
   assert.deepEqual(copies.map(c => [c.id, c.ownerId, c.limit, c.folderId, c.savingsRates]),
-    [['wedding', 'long', 50_000, 'joint-long', { long: 3000 }], ['wedding-mei', 'mei', 50_000, 'joint-mei', undefined]]);
+    [['wedding', 'long', 50_000, 'joint', { long: 3000 }], ['wedding-mei', 'mei', 50_000, 'joint', undefined]]);
   assert.equal(restored.entries[0].categoryId, WEDDING_CATEGORY_ID);
   assert.equal(summarize(restored).jointBalance, summarize(state).jointBalance);
 });
@@ -231,7 +231,7 @@ test('income splits fund that month\'s budgets, and the folder decides where eac
   const state = newPlanner();
   const splits = JSON.stringify([{ categoryId: 'dining', rate: 2000 }, { categoryId: 'wedding', rate: 1000 }, { categoryId: 'essentials', rate: 7000 }, { categoryId: 'bills', rate: 0 }, { categoryId: 'rest', rate: 5000 }]);
   const entry = entryFromFields(fields({ type: 'income', amount: '100.05', source: '', splits }), state);
-  assert.deepEqual(entry.splits, [{ categoryId: 'dining', rate: 2000, amount: 2001 }, { categoryId: 'wedding', rate: 1000, amount: 1001, to: 'joint', goalId: 'wedding' }, { categoryId: 'essentials', rate: 7000, amount: 7003 }]);
+  assert.deepEqual(entry.splits, [{ categoryId: 'dining', rate: 2000, amount: 2001, folder: 'checking-long' }, { categoryId: 'wedding', rate: 1000, amount: 1001, to: 'joint', folder: 'joint', goalId: 'wedding' }, { categoryId: 'essentials', rate: 7000, amount: 7003, folder: 'checking-long' }]);
   assert.equal(entry.splits.reduce((sum, split) => sum + split.amount, 0), 10_005);
   state.entries = [entry];
   const totals = summarize(state, entry.date.slice(0, 7));
@@ -244,8 +244,8 @@ test('income splits fund that month\'s budgets, and the folder decides where eac
   assert.throws(() => entryFromFields(fields({ type: 'income', splits: JSON.stringify([{ categoryId: 'dining', rate: 6000 }, { categoryId: 'bills', rate: 5000 }]) }), state), /add up to 110%/);
   // Under 100%, the rest goes to Personal checking; nothing ticked sends it all there.
   const partial = entryFromFields(fields({ type: 'income', amount: '100', splits: JSON.stringify([{ categoryId: 'dining', rate: 3000 }]) }), state);
-  assert.deepEqual(partial.splits, [{ categoryId: 'dining', rate: 3000, amount: 3000 }, { categoryId: 'rest', to: 'checking', rate: 7000, amount: 7000 }]);
-  assert.deepEqual(entryFromFields(fields({ type: 'income', amount: '10', splits: '[]' }), state).splits, [{ categoryId: 'rest', to: 'checking', rate: 10_000, amount: 1000 }]);
+  assert.deepEqual(partial.splits, [{ categoryId: 'dining', rate: 3000, amount: 3000, folder: 'checking-long' }, { categoryId: 'rest', to: 'checking', folder: 'checking-long', rate: 7000, amount: 7000 }]);
+  assert.deepEqual(entryFromFields(fields({ type: 'income', amount: '10', splits: '[]' }), state).splits, [{ categoryId: 'rest', to: 'checking', folder: 'checking-long', rate: 10_000, amount: 1000 }]);
   // A category ticked inside Personal checking counts as checking money too.
   const ticked = entryFromFields(fields({ type: 'income', amount: '10', splits: JSON.stringify([{ categoryId: 'personal', rate: 10_000 }]) }), state);
   assert.equal(ticked.splits[0].to, 'checking');
@@ -255,19 +255,18 @@ test('income splits fund that month\'s budgets, and the folder decides where eac
   assert.deepEqual(saved.categories.find(c => c.id === 'dining').incomeShares, { long: 2000 });
 });
 
-test('each person gets three locked folders; Wedding, My savings and Personal are ordinary categories that can be deleted', () => {
+test('each person gets locked saving and checking folders and both share one Joint saving folder; Wedding, My savings and Personal can be deleted', () => {
   const state = newPlanner();
-  for (const personId of ['long', 'mei']) {
-    const folders = state.folders.filter(folder => folder.ownerId === personId);
-    assert.deepEqual(folders.map(f => [f.kind, f.name, f.locked]), [['joint', 'Joint saving', true], ['saving', 'Personal saving', true], ['checking', 'Personal checking', true]]);
-  }
+  assert.deepEqual(state.folders.map(f => [f.id, f.ownerId, f.kind, f.locked]),
+    [['joint', 'shared', 'joint', true], ['saving-long', 'long', 'saving', true], ['checking-long', 'long', 'checking', true], ['saving-mei', 'mei', 'saving', true], ['checking-mei', 'mei', 'checking', true]]);
+  assert.deepEqual(state.paycheck, { long: 'checking-long', mei: 'checking-mei' });
   assert.deepEqual(state.categories.filter(c => c.folderId).map(c => [c.id, c.folderId]),
-    [['wedding', 'joint-long'], ['wedding-mei', 'joint-mei'], ['my-savings', 'saving-long'], ['my-savings-mei', 'saving-mei'], ['personal', 'checking-long'], ['personal-mei', 'checking-mei']]);
+    [['wedding', 'joint'], ['wedding-mei', 'joint'], ['my-savings', 'saving-long'], ['my-savings-mei', 'saving-mei'], ['personal', 'checking-long'], ['personal-mei', 'checking-mei']]);
   // Renaming or deleting a built-in folder doesn't stick; deleting a category does.
-  const edited = { ...state, folders: state.folders.filter(f => f.id !== 'saving-mei').map(f => f.id === 'joint-long' ? { ...f, name: 'Fun', locked: false } : f),
+  const edited = { ...state, folders: state.folders.filter(f => f.id !== 'saving-mei').map(f => f.id === 'joint' ? { ...f, name: 'Fun', locked: false } : f),
     categories: state.categories.filter(c => !['personal', 'wedding-mei'].includes(c.id)) };
   const read = readState({ getItem: () => JSON.stringify(edited) });
-  assert.equal(read.folders.find(f => f.id === 'joint-long').name, 'Joint saving');
+  assert.equal(read.folders.find(f => f.id === 'joint').name, 'Joint saving');
   assert.ok(read.folders.some(f => f.id === 'saving-mei' && f.locked));
   assert.equal(read.categories.some(c => c.id === 'personal' || c.id === 'wedding-mei'), false);
   assert.deepEqual(readState({ getItem: () => JSON.stringify(read) }), read);
@@ -567,11 +566,11 @@ test('folders set where a category\'s money goes, and moving a category later ke
   state.goals.push({ id: 'trip', name: 'Trip', target: 100_000 });
   const move = (id, folderId, extra = {}) => { state = { ...state, categories: state.categories.map(c => c.id === id ? { ...c, folderId, ...extra } : c) }; };
   // Dining in Joint saving: the whole expense is a deposit to its goal, and income shares go there too.
-  move('dining', 'joint-long', { savingsGoalId: 'trip', limit: 10_000 });
+  move('dining', 'joint', { savingsGoalId: 'trip', limit: 10_000 });
   const deposit = entryFromFields(fields({ categoryId: 'dining', amount: '80', date: '2026-11-05' }), state);
   assert.deepEqual([deposit.rate, deposit.goalId, deposit.to], [10_000, 'trip', undefined]);
   const income = entryFromFields(fields({ type: 'income', amount: '200', date: '2026-11-01', splits: JSON.stringify([{ categoryId: 'dining', rate: 5000 }]) }), state);
-  assert.deepEqual(income.splits[0], { categoryId: 'dining', rate: 5000, amount: 10_000, to: 'joint', goalId: 'trip' });
+  assert.deepEqual(income.splits[0], { categoryId: 'dining', rate: 5000, amount: 10_000, to: 'joint', folder: 'joint', goalId: 'trip' });
   // Bills in Personal saving: expenses there are savings, not spending.
   move('bills', 'saving-long', { limit: 1_000 });
   const saved = entryFromFields(fields({ categoryId: 'bills', amount: '25', date: '2026-11-06' }), state);
@@ -595,44 +594,121 @@ test('folders set where a category\'s money goes, and moving a category later ke
 
 test('custom folders are private, keep a valid color, and a category can only sit in its owner\'s folder', () => {
   const state = newPlanner();
-  state.folders.push({ id: 'fun', ownerId: 'long', name: 'Fun', color: 'red;', kind: 'joint', locked: false, order: 5 },
+  state.folders.push({ id: 'fun', ownerId: 'long', name: 'Fun', color: 'red;', kind: 'weird', locked: false, order: 5 },
     { id: 'ghost', ownerId: 'stranger', name: 'Ghost' }, { id: 'blank', ownerId: 'mei', name: '  ' });
   state.categories = state.categories.map(c => c.id === 'dining' ? { ...c, folderId: 'fun' } : c.id === 'bills' ? { ...c, folderId: 'checking-mei' } : c);
   const read = readState({ getItem: () => JSON.stringify(state) });
   const fun = read.folders.find(f => f.id === 'fun');
-  assert.deepEqual([fun.kind, fun.locked, fun.color], [undefined, false, '#8a94a3']);
+  // An unknown type (or a 2.14 group-only folder) becomes a checking folder.
+  assert.deepEqual([fun.kind, fun.locked, fun.color], ['checking', false, '#8a94a3']);
   assert.equal(read.folders.some(f => f.id === 'ghost' || f.id === 'blank'), false);
   assert.equal(read.categories.find(c => c.id === 'dining').folderId, 'fun');
   assert.equal(read.categories.find(c => c.id === 'bills').folderId, undefined);
-  // A custom folder only groups: dining's expenses are still ordinary spending.
-  assert.equal(entryFromFields(fields({ categoryId: 'dining' }), read).rate, 0);
+  // In a checking folder, dining's expenses are ordinary spending, paid from that folder.
+  const paid = entryFromFields(fields({ categoryId: 'dining' }), read);
+  assert.deepEqual([paid.rate, paid.from], [0, 'fun']);
 });
 
 test('categories move between folders and positions, and folders are created, renamed and deleted safely', async () => {
   const { budgetGroups, moveCategory, folderFromFields, deleteFolder, jointDepositCategory } = await import('../src/model.js');
   let state = newPlanner();
   const layout = personId => budgetGroups(state, personId).map(group => [group.folder?.id ?? null, group.categories.map(c => c.id)]);
-  state = moveCategory(state, 'dining', 'joint-long', 0);
-  state = moveCategory(state, 'bills', 'joint-long', 1);
+  state = moveCategory(state, 'dining', 'joint', 0);
+  state = moveCategory(state, 'bills', 'joint', 1);
   state = moveCategory(state, 'wedding', null, 0);
-  assert.deepEqual(layout('long')[0], ['joint-long', ['dining', 'bills']]);
+  assert.deepEqual(layout('long')[0], ['joint', ['dining', 'bills']]);
   assert.equal(layout('long').at(-1)[1][0], 'wedding');
   // Mei's layout is untouched, and a category can't go into the other person's folder.
-  assert.deepEqual(layout('mei')[0], ['joint-mei', ['wedding-mei']]);
-  assert.throws(() => moveCategory(state, 'dining', 'joint-mei', 0), /other profile/);
+  // Mei sees only her own categories in the shared Joint saving folder.
+  assert.deepEqual(layout('mei')[0], ['joint', ['wedding-mei']]);
+  assert.throws(() => moveCategory(state, 'dining', 'saving-mei', 0), /other profile/);
   // Order survives a reload.
   assert.deepEqual(budgetGroups(readState({ getItem: () => JSON.stringify(state) }), 'long').map(g => g.categories.map(c => c.id)), layout('long').map(([, ids]) => ids));
   // With Wedding out of Joint saving, quick deposits use the first Joint saving category.
   assert.equal(jointDepositCategory(state, 'long').id, 'dining');
-  const fun = folderFromFields({ name: '  Fun   money ', color: '#aa3366' }, state, 'long');
-  assert.deepEqual([fun.name, fun.ownerId, fun.locked, fun.color], ['Fun money', 'long', false, '#aa3366']);
+  assert.throws(() => folderFromFields({ name: 'Fun' }, state, 'long'), /what kind/);
+  const fun = folderFromFields({ name: '  Fun   money ', color: '#aa3366', kind: 'checking' }, state, 'long');
+  assert.deepEqual([fun.name, fun.ownerId, fun.kind, fun.locked, fun.color], ['Fun money', 'long', 'checking', false, '#aa3366']);
   state = { ...state, folders: [...state.folders, fun] };
-  assert.throws(() => folderFromFields({ name: 'fun MONEY' }, state, 'long'), /already have/);
-  assert.equal(folderFromFields({ name: 'Fun money' }, state, 'mei').ownerId, 'mei');
-  assert.throws(() => folderFromFields({ name: 'Mine' }, state, 'long', state.folders.find(f => f.id === 'joint-long')), /can’t be renamed/);
+  assert.throws(() => folderFromFields({ name: 'fun MONEY', kind: 'saving' }, state, 'long'), /already have/);
+  assert.equal(folderFromFields({ name: 'Fun money', kind: 'checking' }, state, 'mei').ownerId, 'mei');
+  // A joint folder is shared and its type can't change later.
+  const house = folderFromFields({ name: 'House fund', kind: 'joint' }, state, 'mei');
+  assert.equal(house.ownerId, 'shared');
+  assert.equal(folderFromFields({ name: 'Home fund', kind: 'saving' }, state, 'long', house).kind, 'joint');
+  assert.throws(() => folderFromFields({ name: 'Mine' }, state, 'long', state.folders.find(f => f.id === 'joint')), /can’t be renamed/);
   assert.throws(() => deleteFolder(state, 'checking-long'), /can’t be deleted/);
   state = moveCategory(state, 'essentials', fun.id, 0);
   state = deleteFolder(state, fun.id);
   assert.equal(state.categories.find(c => c.id === 'essentials').folderId, undefined);
   assert.equal(state.folders.some(f => f.id === fun.id), false);
+});
+
+test('folders hold balances: income lands by folder, expenses come out of checking, and transfers and withdrawals move money', async () => {
+  const { folderBalance, folderSummaries, transferFromFields, folderFromFields, deleteFolder } = await import('../src/model.js');
+  const { savingsFromFields, personalSavings } = await import('../src/personal-savings.js');
+  let state = newPlanner();
+  const travel = folderFromFields({ name: 'Travel fund', kind: 'saving' }, state, 'long');
+  const bills = folderFromFields({ name: 'Bills account', kind: 'checking' }, state, 'long');
+  state = { ...state, folders: [...state.folders, travel, bills], paycheck: { ...state.paycheck, long: bills.id } };
+  state.categories = state.categories.map(c => c.id === 'dining' ? { ...c, folderId: travel.id } : c);
+  // $1,000 paycheck: 10% Wedding (joint), 20% dining (Travel fund), the rest to the paycheck folder.
+  const pay = entryFromFields(fields({ type: 'income', amount: '1000', date: '2026-11-01', splits: JSON.stringify([{ categoryId: 'wedding', rate: 1000 }, { categoryId: 'dining', rate: 2000 }]) }), state);
+  assert.deepEqual(pay.splits.map(s => [s.categoryId, s.folder, s.amount]), [['wedding', 'joint', 10_000], ['dining', travel.id, 20_000], ['rest', bills.id, 70_000]]);
+  // An unfiled expense is paid from the paycheck folder; a Joint saving one moves money there.
+  const gas = entryFromFields(fields({ categoryId: 'transport', amount: '50', date: '2026-11-03' }), state);
+  const deposit = entryFromFields(fields({ categoryId: 'wedding', amount: '100', date: '2026-11-04' }), state);
+  assert.deepEqual([gas.from, deposit.from, deposit.folder], [bills.id, bills.id, 'joint']);
+  state.entries = [pay, gas, deposit];
+  state.transfers = [transferFromFields({ from: bills.id, to: travel.id, amount: '200', date: '2026-11-05' }, state, 'long')];
+  state.savings = [savingsFromFields({ personId: 'long', date: '2026-11-06', time: '09:00', amount: '30', direction: 'out' }), ];
+  state.savings[0].folderId = travel.id;
+  state = readState({ getItem: () => JSON.stringify(state) });
+  assert.equal(folderBalance(state, bills.id), 70_000 - 5_000 - 10_000 - 20_000);
+  assert.equal(folderBalance(state, travel.id), 20_000 + 20_000 - 3_000);
+  assert.equal(folderBalance(state, 'joint'), 20_000);
+  assert.equal(summarize(state).jointBalance, 20_000);
+  // Personal Saving adds up every saving folder: the dining share, the transfer, minus the withdrawal.
+  assert.equal(personalSavings(state, 'long').balance, 37_000);
+  // Mei sees the shared joint folder and her own, never Long's.
+  const mei = folderSummaries(state, 'mei', '2026-11').map(f => [f.folder.id, f.balance]);
+  assert.deepEqual(mei, [['joint', 20_000], ['saving-mei', 0], ['checking-mei', 0]]);
+  const longTravel = folderSummaries(state, 'long', '2026-11').find(f => f.folder.id === travel.id);
+  assert.deepEqual([longTravel.in, longTravel.out, longTravel.categories.map(c => c.id)], [40_000, 3_000, ['dining']]);
+  // Transfers into a joint folder count toward joint savings; a folder holding money can't be deleted.
+  state.transfers.push(transferFromFields({ from: bills.id, to: 'joint', amount: '10', date: '2026-11-07' }, state, 'long'));
+  assert.equal(summarize(state).jointBalance, 21_000);
+  assert.throws(() => deleteFolder(state, travel.id), /still holds money/);
+  assert.throws(() => transferFromFields({ from: 'checking-mei', to: 'joint', amount: '5', date: '2026-11-07' }, state, 'long'), /two of your folders/);
+  assert.throws(() => transferFromFields({ from: 'joint', to: 'joint', amount: '5', date: '2026-11-07' }, state, 'long'), /two different/);
+  // Deleting the paycheck folder (once empty) sends the rest back to Personal checking.
+  const empty = { ...state, entries: [], transfers: [], savings: [] };
+  assert.equal(readState({ getItem: () => JSON.stringify(deleteFolder(empty, bills.id)) }).paycheck.long, 'checking-long');
+});
+
+test('a 2.14 planner merges both Joint saving folders into one shared folder and keeps its custom folders as checking', () => {
+  const old = newPlanner();
+  old.folders = old.folders.filter(f => f.id !== 'joint').concat(
+    { id: 'joint-long', ownerId: 'long', kind: 'joint', name: 'Joint saving', locked: true, order: 0 },
+    { id: 'joint-mei', ownerId: 'mei', kind: 'joint', name: 'Joint saving', locked: true, order: 0 },
+    { id: 'folder-x', ownerId: 'mei', name: 'Fun', color: '#aa3366', locked: false, order: 4 });
+  old.categories = old.categories.map(c => c.id === 'wedding' ? { ...c, folderId: 'joint-long' } : c.id === 'wedding-mei' ? { ...c, folderId: 'joint-mei' } : c.id === 'dining-mei' ? { ...c, folderId: 'folder-x' } : c);
+  delete old.paycheck;
+  const read = readState({ getItem: () => JSON.stringify(old) });
+  assert.equal(read.folders.some(f => f.id.startsWith('joint-')), false);
+  assert.deepEqual(read.categories.filter(c => c.folderId === 'joint').map(c => c.id), ['wedding', 'wedding-mei']);
+  assert.deepEqual(read.folders.find(f => f.id === 'folder-x').kind, 'checking');
+  assert.deepEqual(read.paycheck, { long: 'checking-long', mei: 'checking-mei' });
+});
+
+test('choosing another paycheck folder later doesn\'t move money that already landed', async () => {
+  const { folderBalance, folderFromFields } = await import('../src/model.js');
+  let state = newPlanner();
+  const old = { ...entryFromFields(fields({ type: 'income', amount: '100', date: '2026-10-01' }), state) };
+  delete old.folder; // saved before 2.15
+  const fresh = entryFromFields(fields({ type: 'income', amount: '50', date: '2026-11-01', splits: '[]' }), state);
+  const second = folderFromFields({ name: 'Second', kind: 'checking' }, state, 'long');
+  state = readState({ getItem: () => JSON.stringify({ ...state, entries: [old, fresh], folders: [...state.folders, second], paycheck: { long: second.id } }) });
+  assert.deepEqual([folderBalance(state, 'checking-long'), folderBalance(state, second.id)], [15_000, 0]);
+  assert.equal(entryFromFields(fields({ type: 'income', amount: '10', date: '2026-11-02', splits: '[]' }), state).splits[0].folder, second.id);
 });

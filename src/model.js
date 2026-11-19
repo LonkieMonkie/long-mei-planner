@@ -80,18 +80,31 @@ export const isPermanentCategory = id => [WEDDING_CATEGORY_ID, PERSONAL_CATEGORY
 //   joint    – income shares and expenses are deposits to Joint Savings (the category's goal)
 //   saving   – income shares and expenses go to that person's own savings (My Savings)
 //   checking – everyday money; the unticked rest of a split income lands here
-// Custom folders only group. Where money went is recorded on each entry when it's saved
-// (`to` on splits and expenses), so moving a category later doesn't rewrite the past.
+// Every folder has one of these types, chosen when it's made, so you can have several savings
+// or checking "accounts". Joint saving folders are shared by both people (ownerId 'shared');
+// the others are private. Where money went is recorded on each entry when it's saved (`to` and
+// `folder` on splits, `folder`/`from` on expenses), so moving a category later doesn't rewrite the past.
+export const SHARED = 'shared';
+export const JOINT_FOLDER_ID = 'joint';
 export const FOLDER_KINDS = {
   joint: { name: 'Joint saving', color: '#4c8363' },
   saving: { name: 'Personal saving', color: '#5a9ccc' },
   checking: { name: 'Personal checking', color: '#d9a520' },
 };
 export const REST = 'rest'; // Split id for the unticked rest of an income, which goes to checking.
-export const systemFolderId = (kind, personId) => `${kind}-${personId}`;
+export const systemFolderId = (kind, personId) => kind === 'joint' ? JOINT_FOLDER_ID : `${kind}-${personId}`;
+const KIND_ORDER = ['joint', 'saving', 'checking'];
+export const canUseFolder = (folder, personId) => Boolean(folder) && (folder.ownerId === SHARED || !personId || folder.ownerId === personId);
 export const visibleFolders = (state, personId) => (state.folders ?? [])
-  .filter(folder => !personId || folder.ownerId === personId)
-  .sort((a, b) => Number(b.locked ?? false) - Number(a.locked ?? false) || (a.order ?? 0) - (b.order ?? 0));
+  .filter(folder => canUseFolder(folder, personId))
+  .sort((a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind) || Number(b.locked ?? false) - Number(a.locked ?? false) || (a.order ?? 0) - (b.order ?? 0));
+// The checking folder where the unticked rest of each income lands, and where expenses
+// outside the saving folders are paid from.
+export function paycheckFolder(state, personId) {
+  const id = state.paycheck?.[personId];
+  const folder = (state.folders ?? []).find(item => item.id === id && item.ownerId === personId && item.kind === 'checking');
+  return folder?.id ?? systemFolderId('checking', personId);
+}
 export function categoryKind(state, category) {
   if (!category) return null;
   const folder = category.folderId && (state.folders ?? []).find(item => item.id === category.folderId);
@@ -124,7 +137,7 @@ export function moveCategory(state, categoryId, folderId, index) {
   const moving = state.categories.find(category => category.id === categoryId);
   if (!moving) return state;
   const personId = moving.ownerId;
-  if (folderId && !(state.folders ?? []).some(folder => folder.id === folderId && folder.ownerId === personId)) throw new Error('That folder belongs to the other profile.');
+  if (folderId && !(state.folders ?? []).some(folder => folder.id === folderId && (folder.ownerId === personId || folder.ownerId === SHARED))) throw new Error('That folder belongs to the other profile.');
   const groups = budgetGroups(state, personId).map(group => ({ id: group.folder?.id ?? null, ids: group.categories.map(category => category.id).filter(id => id !== categoryId) }));
   const target = groups.find(group => group.id === (folderId ?? null)) ?? groups[groups.length - 1];
   target.ids.splice(Math.max(0, Math.min(index, target.ids.length)), 0, categoryId);
@@ -145,11 +158,14 @@ export function folderFromFields(fields, state, personId, previous) {
   if (!name) throw new Error('Enter a folder name.');
   if (name.length > 40) throw new Error('Keep the folder name to 40 characters or fewer.');
   if (previous?.locked) throw new Error('Built-in folders can’t be renamed.');
-  if ((state.folders ?? []).some(folder => folder.ownerId === personId && folder.id !== previous?.id && folder.name.toLowerCase() === name.toLowerCase())) throw new Error('You already have a folder with that name.');
+  const kind = previous?.kind ?? fields.kind;
+  if (!FOLDER_KINDS[kind]) throw new Error('Choose what kind of folder this is.');
+  const ownerId = previous?.ownerId ?? (kind === 'joint' ? SHARED : personId);
+  if ((state.folders ?? []).some(folder => folder.ownerId === ownerId && folder.id !== previous?.id && folder.name.toLowerCase() === name.toLowerCase())) throw new Error(ownerId === SHARED ? 'There’s already a joint folder with that name.' : 'You already have a folder with that name.');
   const color = parseAccent(fields.color) ?? previous?.color ?? '#8a94a3';
   if (previous) return { ...previous, name, color };
-  const order = Math.max(2, ...(state.folders ?? []).filter(folder => folder.ownerId === personId).map(folder => folder.order ?? 0)) + 1;
-  return { id: 'folder-' + crypto.randomUUID().slice(0, 8), ownerId: personId, name, color, locked: false, order };
+  const order = Math.max(2, ...(state.folders ?? []).filter(folder => folder.ownerId === ownerId).map(folder => folder.order ?? 0)) + 1;
+  return { id: 'folder-' + crypto.randomUUID().slice(0, 8), ownerId, kind, name, color, locked: false, order };
 }
 
 // Deleting a custom folder keeps its categories; they move out to the ungrouped list.
@@ -157,8 +173,77 @@ export function deleteFolder(state, folderId) {
   const folder = (state.folders ?? []).find(item => item.id === folderId);
   if (!folder) return state;
   if (folder.locked) throw new Error('Built-in folders can’t be deleted.');
-  return { ...state, folders: state.folders.filter(item => item.id !== folderId),
+  if (folderBalance(state, folderId) !== 0) throw new Error(`${folder.name} still holds money. Transfer it to another folder first.`);
+  const paycheck = Object.fromEntries(Object.entries(state.paycheck ?? {}).filter(([, id]) => id !== folderId));
+  return { ...state, folders: state.folders.filter(item => item.id !== folderId), paycheck,
     categories: state.categories.map(category => { if (category.folderId !== folderId) return category; const next = { ...category }; delete next.folderId; return next; }) };
+}
+
+export function transferFromFields(fields, state, personId, previous, now = new Date().toISOString()) {
+  const amount = decimalUnits(fields.amount);
+  if (amount <= 0) throw new Error('Enter an amount greater than zero.');
+  if (!isDateKey(fields.date)) throw new Error('Choose a valid date.');
+  const from = (state.folders ?? []).find(folder => folder.id === fields.from);
+  const to = (state.folders ?? []).find(folder => folder.id === fields.to);
+  if (!canUseFolder(from, personId) || !canUseFolder(to, personId)) throw new Error('Choose two of your folders.');
+  if (from.id === to.id) throw new Error('Choose two different folders.');
+  return { id: previous?.id ?? crypto.randomUUID(), personId, from: from.id, to: to.id, amount, date: fields.date,
+    time: fields.time || previous?.time || localTime(new Date(now)), note: String(fields.note ?? '').trim().slice(0, 100), createdAt: previous?.createdAt ?? now };
+}
+
+// Which folder each piece of money went to or came from. Entries saved before 2.15 have no
+// `folder`, so they fall back to where they went at the time (`to`) and today's defaults.
+function moves(state, entry) {
+  const p = entry.personId;
+  const out = [];
+  const home = (to, folder) => folder ?? (to === 'joint' ? JOINT_FOLDER_ID : to === 'saving' ? systemFolderId('saving', p) : paycheckFolder(state, p));
+  if (entry.type === 'income') {
+    if (!entry.splits?.length) out.push({ folder: entry.folder ?? paycheckFolder(state, p), amount: entry.amount });
+    for (const split of entry.splits ?? []) out.push({ folder: home(split.to, split.folder), amount: split.amount });
+  } else {
+    out.push({ folder: entry.from ?? paycheckFolder(state, p), amount: -entry.amount });
+    if (entry.to === 'saving') out.push({ folder: home('saving', entry.folder), amount: entry.amount });
+    else for (const share of goalShares(entry)) out.push({ folder: home('joint', entry.folder), amount: share.amount });
+  }
+  return out;
+}
+
+// Every movement of money in or out of folders, with its date, for balances and activity lists.
+export function folderLedger(state) {
+  const rows = [];
+  for (const entry of state.entries) for (const move of moves(state, entry)) {
+    if (move.amount) rows.push({ ...move, date: entry.date, time: entryTime(entry), personId: entry.personId, kind: entry.type, label: entry.source, entry });
+  }
+  for (const record of state.savings ?? []) rows.push({ folder: record.folderId ?? systemFolderId('saving', record.personId), amount: record.amount, date: record.date, time: record.time, personId: record.personId, kind: record.amount < 0 ? 'withdrawal' : 'deposit', label: record.note || (record.amount < 0 ? 'Taken out' : 'Added'), record });
+  for (const transfer of state.transfers ?? []) {
+    rows.push({ folder: transfer.from, amount: -transfer.amount, date: transfer.date, time: transfer.time, personId: transfer.personId, kind: 'transfer', label: transfer.note || 'Transfer', transfer });
+    rows.push({ folder: transfer.to, amount: transfer.amount, date: transfer.date, time: transfer.time, personId: transfer.personId, kind: 'transfer', label: transfer.note || 'Transfer', transfer });
+  }
+  return rows.sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time));
+}
+
+export function folderBalance(state, folderId, ledger = folderLedger(state)) {
+  return ledger.reduce((sum, row) => sum + (row.folder === folderId ? row.amount : 0), 0);
+}
+
+// Each folder's all-time balance and this month's money in and out, plus the budget and
+// spending of the categories inside (only the viewer's own, for privacy).
+export function folderSummaries(state, personId, month) {
+  const ledger = folderLedger(state);
+  const budget = personalBudget(state, month, personId);
+  return visibleFolders(state, personId).map(folder => {
+    const rows = ledger.filter(row => row.folder === folder.id);
+    const monthRows = rows.filter(row => row.date.startsWith(month + '-'));
+    const categories = budget.categories.filter(category => category.folderId === folder.id);
+    return {
+      folder, rows, categories,
+      balance: rows.reduce((sum, row) => sum + row.amount, 0) + (folder.id === JOINT_FOLDER_ID ? state.savingsAdjustment ?? 0 : 0),
+      in: monthRows.filter(row => row.amount > 0).reduce((sum, row) => sum + row.amount, 0),
+      out: -monthRows.filter(row => row.amount < 0).reduce((sum, row) => sum + row.amount, 0),
+      budgeted: categories.reduce((sum, category) => sum + budget.limit(category), 0),
+      spent: categories.reduce((sum, category) => sum + (budget.spentByCategory.get(category.id) ?? 0), 0),
+    };
+  });
 }
 
 // Budget categories are private: a custom category belongs to one person (ownerId) and only
@@ -294,13 +379,16 @@ export function incomeSplits(raw, amount, state, personId) {
     const split = { categoryId, rate, amount: Math.floor(amount * rate / 10_000) };
     const kind = categoryKind(state, category);
     if (kind) split.to = kind;
+    const owner = category.ownerId ?? personId;
+    split.folder = kind ? category.folderId : owner ? paycheckFolder(state, owner) : undefined;
+    if (!split.folder) delete split.folder;
     if (kind === 'joint' && jointGoalFor(category, state.goals)) split.goalId = jointGoalFor(category, state.goals);
     splits.push(split);
   }
   // Ticked shares can't pass 100%; whatever they leave goes to Personal.
   const total = splits.reduce((sum, split) => sum + split.rate, 0);
   if (total > 10_000) throw new Error(`The ticked shares add up to ${total / 100}%. Lower them to 100% or less.`);
-  if (total < 10_000) splits.push({ categoryId: REST, to: 'checking', rate: 10_000 - total, amount: Math.floor(amount * (10_000 - total) / 10_000) });
+  if (total < 10_000) splits.push({ categoryId: REST, to: 'checking', ...(personId ? { folder: paycheckFolder(state, personId) } : {}), rate: 10_000 - total, amount: Math.floor(amount * (10_000 - total) / 10_000) });
   // Hand out the leftover cents from rounding down, largest fraction first, so the shares sum to the amount.
   let left = amount - splits.reduce((sum, split) => sum + split.amount, 0);
   const byFraction = [...splits].sort((a, b) => (amount * b.rate % 10_000) - (amount * a.rate % 10_000));
@@ -325,6 +413,9 @@ export function entryFromFields(fields, state, previous, now = new Date().toISOS
   const kind = type === 'expense' ? categoryKind(state, category) : null;
   const sameCategory = previous?.type === 'expense' && previous.categoryId === category?.id && previous.personId === person.id;
   const to = sameCategory ? previous.to : kind === 'saving' ? 'saving' : undefined;
+  // The folder the money goes into (saving folders) and the checking folder it's paid from.
+  const folder = sameCategory ? previous.folder : kind === 'joint' || kind === 'saving' ? category.folderId : undefined;
+  const from = type !== 'expense' ? undefined : sameCategory && previous.from ? previous.from : kind === 'checking' ? category.folderId : paycheckFolder(state, person.id);
   const allocation = type === 'expense' ? savingsRule(category, person.id, state.goals, previous, kind) : {};
   const splits = type === 'income' ? incomeSplits(fields.splits, amount, state, person.id) : [];
   // A shared expense records the other person's share; withSharedDebt turns it into a debt.
@@ -337,9 +428,19 @@ export function entryFromFields(fields, state, previous, now = new Date().toISOS
   return {
     id: previous?.id ?? crypto.randomUUID(),
     personId: person.id, type, categoryId: type === 'expense' ? category.id : '',
-    source, date: fields.date, time, amount, ...allocation, ...(to ? { to } : {}), ...(splits.length ? { splits } : {}), ...(shared ? { shared } : {}),
+    source, date: fields.date, time, amount, ...allocation, ...(to ? { to } : {}), ...(folder ? { folder } : {}), ...(from ? { from } : {}), ...(type === 'income' && !splits.length ? { folder: paycheckFolder(state, person.id) } : {}), ...(splits.length ? { splits } : {}), ...(shared ? { shared } : {}),
     createdAt: previous?.createdAt ?? now, editedAt: previous ? now : null,
   };
+}
+
+// Money moved into or out of joint folders by hand (transfers and withdrawals), which joint
+// goal contributions don't include.
+function jointMoves(state) {
+  const joint = new Set((state.folders ?? []).filter(folder => folder.kind === 'joint').map(folder => folder.id));
+  let sum = 0;
+  for (const record of state.savings ?? []) if (joint.has(record.folderId)) sum += record.amount;
+  for (const transfer of state.transfers ?? []) sum += (joint.has(transfer.to) ? transfer.amount : 0) - (joint.has(transfer.from) ? transfer.amount : 0);
+  return sum;
 }
 
 export function summarize(state, month) {
@@ -378,7 +479,7 @@ export function summarize(state, month) {
   const budgeted = state.categories.reduce((sum, c) => sum + limitFor(c), 0);
   return {
     people, goals, spentByCategory, fundedByCategory, income, spent, allocated, budgeted, totalContributions,
-    jointBalance: state.savingsAdjustment + totalContributions,
+    jointBalance: state.savingsAdjustment + totalContributions + jointMoves(state),
   };
 }
 
@@ -554,17 +655,26 @@ function ensureLegacyCategories(state) {
 function organizeFolders(state) {
   const ids = PEOPLE.map(person => person.id);
   state.folders = (Array.isArray(state.folders) ? state.folders : []).filter(folder =>
-    typeof folder?.id === 'string' && ids.includes(folder.ownerId) && typeof folder.name === 'string' && folder.name.trim());
-  for (const personId of ids) {
-    Object.entries(FOLDER_KINDS).forEach(([kind, { name, color }], index) => {
-      const id = systemFolderId(kind, personId);
-      const existing = state.folders.find(folder => folder.id === id);
-      const fixed = { id, ownerId: personId, kind, name, locked: true };
-      if (existing) Object.assign(existing, fixed);
-      else state.folders.push({ ...fixed, color, order: index });
-    });
+    typeof folder?.id === 'string' && (ids.includes(folder.ownerId) || folder.ownerId === SHARED) && typeof folder.name === 'string' && folder.name.trim());
+  // 2.14 had a Joint saving folder per person; there's now one, shared.
+  const mergedJoint = new Set(ids.map(personId => `joint-${personId}`));
+  state.folders = state.folders.filter(folder => !mergedJoint.has(folder.id));
+  for (const category of state.categories) if (mergedJoint.has(category.folderId)) category.folderId = JOINT_FOLDER_ID;
+  const builtIn = [[JOINT_FOLDER_ID, SHARED, 'joint', 0], ...ids.flatMap(personId => [[systemFolderId('saving', personId), personId, 'saving', 1], [systemFolderId('checking', personId), personId, 'checking', 2]])];
+  for (const [id, ownerId, kind, order] of builtIn) {
+    const existing = state.folders.find(folder => folder.id === id);
+    const fixed = { id, ownerId, kind, name: FOLDER_KINDS[kind].name, locked: true };
+    if (existing) Object.assign(existing, fixed);
+    else state.folders.push({ ...fixed, color: FOLDER_KINDS[kind].color, order });
   }
-  for (const folder of state.folders) if (!folder.locked) { delete folder.kind; folder.color = parseAccent(folder.color) ?? '#8a94a3'; }
+  for (const folder of state.folders) {
+    if (folder.locked) continue;
+    // Folders made in 2.14 only grouped; they become checking folders.
+    if (!FOLDER_KINDS[folder.kind]) folder.kind = 'checking';
+    if (folder.kind === 'joint') folder.ownerId = SHARED;
+    else if (folder.ownerId === SHARED) folder.kind = 'joint';
+    folder.color = parseAccent(folder.color) ?? '#8a94a3';
+  }
 
   const homes = { [WEDDING_CATEGORY_ID]: 'joint', [SAVINGS_CATEGORY_ID]: 'saving', [PERSONAL_CATEGORY_ID]: 'checking' };
   const remap = new Map();
@@ -597,9 +707,26 @@ function organizeFolders(state) {
   const folders = new Map(state.folders.map(folder => [folder.id, folder]));
   state.categories.forEach((category, index) => {
     const folder = folders.get(category.folderId);
-    if (category.folderId !== undefined && (!folder || folder.ownerId !== category.ownerId)) delete category.folderId;
+    if (category.folderId !== undefined && (!folder || (folder.ownerId !== category.ownerId && folder.ownerId !== SHARED))) delete category.folderId;
     if (!Number.isFinite(category.order)) category.order = index;
   });
+  const owns = (folderId, personId, kinds) => { const folder = folders.get(folderId); return folder && kinds.includes(folder.kind) && (folder.ownerId === personId || folder.ownerId === SHARED); };
+  state.paycheck = Object.fromEntries(ids.map(personId => [personId, owns(state.paycheck?.[personId], personId, ['checking']) ? state.paycheck[personId] : systemFolderId('checking', personId)]));
+  for (const record of state.savings) if (record.folderId !== undefined && !owns(record.folderId, record.personId, Object.keys(FOLDER_KINDS))) delete record.folderId;
+  // Entries from before 2.15 get the folder they'd have used then, so choosing another paycheck
+  // folder later doesn't move old money.
+  state.entries = state.entries.map(entry => {
+    const checking = systemFolderId('checking', entry.personId);
+    if (entry.type === 'income') {
+      if (!entry.splits?.length) return entry.folder ? entry : { ...entry, folder: checking };
+      if (entry.splits.every(split => split.folder)) return entry;
+      return { ...entry, splits: entry.splits.map(split => split.folder ? split : { ...split, folder: split.to === 'joint' ? JOINT_FOLDER_ID : split.to === 'saving' ? systemFolderId('saving', entry.personId) : checking }) };
+    }
+    return entry.from ? entry : { ...entry, from: checking };
+  });
+  state.transfers = (Array.isArray(state.transfers) ? state.transfers : []).filter(t => t && typeof t.id === 'string' && ids.includes(t.personId)
+    && owns(t.from, t.personId, Object.keys(FOLDER_KINDS)) && owns(t.to, t.personId, Object.keys(FOLDER_KINDS)) && t.from !== t.to
+    && Number.isSafeInteger(t.amount) && t.amount > 0 && isDateKey(t.date) && typeof t.time === 'string' && typeof (t.note ?? '') === 'string');
 }
 
 function finishState(state) {

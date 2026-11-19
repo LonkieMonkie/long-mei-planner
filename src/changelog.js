@@ -1,6 +1,14 @@
 // What changed in each release, newest first. Add an entry and bump "version" in
 // package.json together; a test checks that they match.
 export const CHANGELOG = [
+  { version: '2.15.0', date: '2026-11-18', changes: [
+    'The sidebar has three money tabs: Joint Saving, Personal Saving and Personal Checking. Each lists its folders like accounts, with an all-time balance and this month’s money in and out, the categories inside, and recent activity.',
+    'Make as many folders of each type as you need, one per real account. Pick the type when you create the folder; it can’t change later, so history keeps its meaning.',
+    'Joint saving folders are shared: you both see them and both put money in, while your categories inside stay private.',
+    'Choose which checking folder your paycheck lands in. The unticked rest of each income goes there, and expenses outside the saving folders are paid from it. Old entries stay where they landed.',
+    'Transfer money between folders, and add money to or take money out of any folder, for example to match your real bank balance.',
+    'A folder that still holds money can’t be deleted until you move the money out.',
+  ] },
   { version: '2.14.0', date: '2026-11-18', changes: [
     'Folders on the Budget page. Each of you has three built-in folders that can’t be renamed or deleted: Joint saving, Personal saving and Personal checking. You can add your own folders too, with a name and color.',
     'The folder sets where a category’s money goes. In Joint saving, its income shares and expenses go to Joint Savings. In Personal saving, they go to My Savings. Personal checking is everyday money and gets the unticked rest of each income. Your own folders only group and total.',

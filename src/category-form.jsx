@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { DEFAULT_ACCENT, parseAccent } from './appearance.js';
-import { PEOPLE, categoryColor, decimalUnits, moveCategory, visibleFolders } from './model.js';
+import { FOLDER_KINDS, PEOPLE, categoryColor, decimalUnits, moveCategory, visibleFolders } from './model.js';
 import { ActionForm } from './ui.jsx';
 
 function toHsv(hex) {
@@ -104,11 +104,12 @@ export function CategoryForm({ item, state, done, close, me, folderId: startFold
     <label>Category name<input name="name" autoFocus={!item} required maxLength={70} defaultValue={item?.name ?? ''} placeholder="e.g. Traveling"/></label>
     {owner && <label>Folder<select value={folderId} onChange={e => setFolderId(e.target.value)}>
       <option value="">Not in a folder</option>
-      {folders.map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}
+      {folders.map(folder => <option key={folder.id} value={folder.id}>{folder.name} ({FOLDER_KINDS[folder.kind]?.name})</option>)}
     </select></label>}
     {kind === 'joint' ? <p className="field-help">In <b>Joint saving</b>, its income shares and expenses all go to the joint goal below.</p>
-      : kind === 'saving' ? <p className="field-help">In <b>Personal saving</b>, its income shares and expenses go to {owner === me ? 'your' : 'their'} own savings on My Savings.</p>
-      : kind === 'checking' ? <p className="field-help">In <b>Personal checking</b>, this is everyday money.</p> : null}
+      : kind === 'saving' ? <p className="field-help">In a <b>Personal saving</b> folder, its income shares and expenses go to that folder.</p>
+      : kind === 'checking' ? <p className="field-help">In a <b>Personal checking</b> folder, its expenses are paid from that folder.</p>
+      : <p className="field-help">Outside folders, its expenses are paid from your paycheck folder.</p>}
     {!item && me && <p className="field-help">This category is private to you. Your partner sees what you spend in it, but not your budget for it.</p>}
     <CategoryColorPicker initial={item ? categoryColor(item) : DEFAULT_ACCENT}/>
     {kind !== 'joint' && kind !== 'saving' ? <div className="form-row">{people.map(person => <label key={person.id}>{me ? 'Your' : person.name} savings (%)

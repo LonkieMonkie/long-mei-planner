@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { BarChart3, CalendarDays, ChevronLeft, ChevronRight, CircleAlert, CircleCheck, HandCoins, LayoutGrid, PiggyBank, Plus, Scale, Settings as SettingsIcon, Sprout, Wallet } from 'lucide-react';
+import { BarChart3, CalendarDays, ChevronLeft, ChevronRight, CircleAlert, CircleCheck, HandCoins, Landmark, LayoutGrid, PiggyBank, Plus, Scale, Settings as SettingsIcon, Sprout, Wallet } from 'lucide-react';
 import { Budget, Dashboard, MonthSelector, Savings } from './finance.jsx';
 import { CalendarView } from './calendar.jsx';
 import { MySavings } from './my-savings.jsx';
+import { FolderAccounts } from './accounts.jsx';
 import { Insights } from './insights-page.jsx';
 import { personalSavings } from './personal-savings.js';
 import { DebtTracker } from './debts.jsx';
@@ -26,8 +27,9 @@ const views = [
   { id: 'budget', name: 'Budget', icon: Wallet, subtitle: 'Track income, spending and savings for each of you.' },
   { id: 'insights', name: 'Insights', icon: BarChart3, subtitle: 'Where your money went, how it compares, and a recap to look back on.' },
   { id: 'calendar', name: 'Calendar', icon: CalendarDays, subtitle: 'See your events, budget entries, deposits and debt payments.' },
-  { id: 'savings', name: 'Joint Savings', icon: PiggyBank, subtitle: 'See what each of you has put toward your shared goals.' },
-  { id: 'my-savings', name: 'My Savings', icon: HandCoins, subtitle: 'Your own savings: money you add or take out, plus what you save from income.' },
+  { id: 'savings', name: 'Joint Saving', icon: PiggyBank, subtitle: 'Your shared saving folders and the goals you save toward together.' },
+  { id: 'my-savings', name: 'Personal Saving', icon: HandCoins, subtitle: 'Your own saving folders: money you add, take out, move or save from income.' },
+  { id: 'checking', name: 'Personal Checking', icon: Landmark, subtitle: 'Your everyday money: where paychecks land and expenses are paid from.' },
   { id: 'debts', name: 'Debt Tracker', icon: Scale, subtitle: 'Track what you owe each other and record payments.' },
   { id: 'settings', name: 'Settings', icon: SettingsIcon, subtitle: 'Personalize your dashboard and export your records.' },
 ];
@@ -246,9 +248,10 @@ function App() {
         {active === 'dashboard' && <Dashboard state={state} totals={totals} me={session.me} open={setModal} navigate={navigate}/>}
         {active === 'budget' && <Budget me={session.me} {...{ state, totals, month, save, edit, remove }} open={setModal}/>}
         {active === 'calendar' && <CalendarView me={session.me} state={state} open={setModal} month={calendarMonth} setMonth={setCalendarMonth} selected={selectedDay} setSelected={setSelectedDay}/>}
-        {active === 'savings' && <Savings me={session.me} {...{ state, totals, edit, remove }} open={setModal}/>}
+        {active === 'savings' && <><FolderAccounts kind="joint" state={state} me={session.me} month={month} open={setModal} save={save}/><Savings me={session.me} {...{ state, totals, edit, remove }} open={setModal}/></>}
+        {active === 'checking' && <FolderAccounts kind="checking" state={state} me={session.me} month={month} open={setModal} save={save}/>}
         {active === 'insights' && <Insights state={state}/>}
-        {active === 'my-savings' && <MySavings state={state} me={session.me} open={setModal} editEntry={edit}/>}
+        {active === 'my-savings' && <><FolderAccounts kind="saving" state={state} me={session.me} month={month} open={setModal} save={save}/><MySavings state={state} me={session.me} open={setModal} editEntry={edit}/></>}
         {active === 'debts' && <DebtTracker debts={state.debts} open={setModal}/>}
         {active === 'settings' && <>{cloudOn && <AccountCard session={session} signOut={signOut}/>}<ProfilePictureCard me={session.me} avatars={avatars} setAvatar={setAvatar} notify={message => setNotice({ message })}/><Settings key={state.accentColor} accent={state.accentColor} save={save}/><TreeSettings key={state.tree.kind + state.tree.perMeter} tree={state.tree} save={save}/><ExportCard onExport={() => exportExcel(state, totals, session.me)}/><StorageCard json={cloudOn ? remote.current?.json : (() => { try { return localStorage.getItem(STORAGE_KEY); } catch { return ''; } })()} entries={state.entries} synced={cloudOn}/><VersionCard/></>}
         </ErrorBoundary>
