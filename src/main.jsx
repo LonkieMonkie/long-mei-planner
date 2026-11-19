@@ -22,16 +22,23 @@ import { connect } from './cloud.js';
 import { firebaseConfig } from './firebase-config.js';
 import './style.css';
 
+// Sidebar sections, each separated by a divider. Order within a section is the order shown.
+const NAV_GROUPS = [
+  { id: 'home', label: null },
+  { id: 'personal', label: 'Personal' },
+  { id: 'shared', label: 'Shared' },
+  { id: 'app', label: null },
+];
 const views = [
-  { id: 'dashboard', name: 'Dashboard', icon: LayoutGrid, subtitle: 'Your finances and plans, together in one place.' },
-  { id: 'budget', name: 'Budget', icon: Wallet, subtitle: 'Track income, spending and savings for each of you.' },
-  { id: 'insights', name: 'Insights', icon: BarChart3, subtitle: 'Where your money went, how it compares, and a recap to look back on.' },
-  { id: 'calendar', name: 'Calendar', icon: CalendarDays, subtitle: 'See your events, budget entries, deposits and debt payments.' },
-  { id: 'savings', name: 'Joint Saving', icon: PiggyBank, subtitle: 'Your shared saving folders and the goals you save toward together.' },
-  { id: 'my-savings', name: 'Personal Saving', icon: HandCoins, subtitle: 'Your own saving folders: money you add, take out, move or save from income.' },
-  { id: 'checking', name: 'Personal Checking', icon: Landmark, subtitle: 'Your everyday money: where paychecks land and expenses are paid from.' },
-  { id: 'debts', name: 'Debt Tracker', icon: Scale, subtitle: 'Track what you owe each other and record payments.' },
-  { id: 'settings', name: 'Settings', icon: SettingsIcon, subtitle: 'Personalize your dashboard and export your records.' },
+  { id: 'dashboard', group: 'home', name: 'Dashboard', icon: LayoutGrid, subtitle: 'Your finances and plans, together in one place.' },
+  { id: 'budget', group: 'personal', name: 'Budget', icon: Wallet, subtitle: 'Track income, spending and savings for each of you.' },
+  { id: 'my-savings', group: 'personal', name: 'Personal Saving', icon: HandCoins, subtitle: 'Your own saving folders: money you add, take out, move or save from income.' },
+  { id: 'checking', group: 'personal', name: 'Personal Checking', icon: Landmark, subtitle: 'Your everyday money: where paychecks land and expenses are paid from.' },
+  { id: 'savings', group: 'shared', name: 'Joint Saving', icon: PiggyBank, subtitle: 'Your shared saving folders and the goals you save toward together.' },
+  { id: 'calendar', group: 'shared', name: 'Calendar', icon: CalendarDays, subtitle: 'See your events, budget entries, deposits and debt payments.' },
+  { id: 'insights', group: 'shared', name: 'Insights', icon: BarChart3, subtitle: 'Where your money went, how it compares, and a recap to look back on.' },
+  { id: 'debts', group: 'shared', name: 'Debt Tracker', icon: Scale, subtitle: 'Track what you owe each other and record payments.' },
+  { id: 'settings', group: 'app', name: 'Settings', icon: SettingsIcon, subtitle: 'Personalize your dashboard and export your records.' },
 ];
 
 const SIDEBAR_KEY = 'our-little-life.sidebar';
@@ -108,6 +115,11 @@ function App() {
   }
   const totals = summarize(state, active === 'dashboard' ? localDate().slice(0, 7) : month);
   const view = views.find(item => item.id === active);
+  // On phones the menu is one swipeable row; keep the current tab in view.
+  useEffect(() => {
+    const link = document.querySelector('.sidebar nav a.active');
+    if (link && matchMedia('(max-width: 820px)').matches) link.scrollIntoView({ block: 'nearest', inline: 'center' });
+  }, [active]);
 
   useEffect(() => {
     const hash = () => { setActive(getView()); setModal(null); window.scrollTo(0, 0); };
@@ -226,7 +238,10 @@ function App() {
         {expanded ? <ChevronLeft size={16}/> : <ChevronRight size={16}/>}
       </button>
       <a href="#dashboard" className="brand"><span className="brand-mark"><Sprout size={21} strokeWidth={2.3}/></span><span>Our Little Life<small>Long &amp; Mei</small></span></a>
-      <nav aria-label="Main navigation">{views.map(({ id, name, icon: Icon }) => <a key={id} href={`#${id}`} title={expanded ? undefined : name} aria-current={active === id ? 'page' : undefined} className={active === id ? 'active' : ''}><Icon size={19}/><span>{name}</span></a>)}</nav>
+      <nav aria-label="Main navigation">{NAV_GROUPS.map(group => <div className="nav-group" key={group.id} role="group" aria-label={group.label ?? undefined}>
+        {group.label && <p className="nav-label">{group.label}</p>}
+        {views.filter(view => view.group === group.id).map(({ id, name, icon: Icon }) => <a key={id} href={`#${id}`} title={expanded ? undefined : name} aria-current={active === id ? 'page' : undefined} className={active === id ? 'active' : ''}><Icon size={19}/><span>{name}</span></a>)}
+      </div>)}</nav>
       <div className="side-bottom">
         <div className="side-profiles">{me && avatars[me.id] ? <Avatar id={me.id} className="side-avatar"/> : <PlantPair mini/>}<span>{me ? me.name : <>Long &amp; Mei</>}<small>{me ? 'Signed in' : 'Two profiles'}</small></span></div>
         <div className={cloudOn && !session.synced ? 'local-status offline' : 'local-status'}><span/> {!cloudOn ? 'Saved on this device' : session.synced ? 'Synced across your devices' : 'Offline'}</div>

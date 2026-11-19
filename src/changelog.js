@@ -1,6 +1,10 @@
 // What changed in each release, newest first. Add an entry and bump "version" in
 // package.json together; a test checks that they match.
 export const CHANGELOG = [
+  { version: '2.15.1', date: '2026-11-18', changes: [
+    'The sidebar is organized into sections with dividers: Dashboard; Personal (Budget, Personal Saving, Personal Checking); Shared (Joint Saving, Calendar, Insights, Debt Tracker); and Settings.',
+    'On phones the menu is one row you can swipe, with dividers between sections, so it takes much less space at the top. The current page stays in view.',
+  ] },
   { version: '2.15.0', date: '2026-11-18', changes: [
     'The sidebar has three money tabs: Joint Saving, Personal Saving and Personal Checking. Each lists its folders like accounts, with an all-time balance and this month’s money in and out, the categories inside, and recent activity.',
     'Make as many folders of each type as you need, one per real account. Pick the type when you create the folder; it can’t change later, so history keeps its meaning.',

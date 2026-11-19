@@ -792,3 +792,21 @@ button.secondary:active { box-shadow: 0 1px 0 var(--color-line); }
 .muted-note { margin-top: 6px; font-size: 12px; color: var(--color-muted); }
 .paid-from { margin-top: -4px; }
 @media (max-width: 820px) { .account-detail { grid-template-columns: 1fr; } }
+
+/* ---------- Sidebar sections with dividers ---------- */
+.sidebar nav { gap: 0; }
+.nav-group { display: flex; flex-direction: column; gap: 4px; }
+.nav-group + .nav-group { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--color-line); }
+.nav-label { padding: 2px 16px 4px; font-size: 11px; font-weight: 700; color: var(--color-muted); }
+@media (min-width: 821px) {
+  .sidebar-collapsed .nav-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+}
+/* Phones: one row you can swipe, with a thin divider between sections, so the menu stays short. */
+@media (max-width: 820px) {
+  .sidebar nav { display: flex; flex-direction: row; flex-wrap: nowrap; gap: 0; overflow-x: auto; scrollbar-width: none; margin-inline: -16px; padding-inline: 12px; }
+  .sidebar nav::-webkit-scrollbar { display: none; }
+  .nav-group { flex-direction: row; flex: none; gap: 2px; }
+  .nav-group + .nav-group { margin: 6px 0 6px 6px; padding: 0 0 0 6px; border-top: 0; border-left: 1px solid var(--color-line); }
+  .nav-label { display: none; }
+  .sidebar nav a { flex: none; min-width: 64px; }
+}
